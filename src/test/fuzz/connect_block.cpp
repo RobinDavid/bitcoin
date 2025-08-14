@@ -275,6 +275,11 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
 
     block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider, true));
 
+    int numTx = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
+    for (int i = 0; i < numTx; i++) {
+        block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider));
+    }
+
     if (adjustMerkle) {
         block.hashMerkleRoot = BlockMerkleRoot(block);
     }
