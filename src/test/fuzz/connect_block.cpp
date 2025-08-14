@@ -298,17 +298,51 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
 
 FUZZ_TARGET(connect_block, .init = initialize_connect_block)
 {
+    // Initialize data provider
+    FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
 
-    /*
-        block = fuzzed_data_provider.Consume<CBlock>();
+    // AssertLockHeld(cs_main);
+    LOCK(::cs_main);
 
-        res = ConnectBlock(block);
+    Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
+    CBlockIndex* active_tip = active_chainstate.m_chain.Tip();
+    CCoinsViewCache& active_coins = active_chainstate.CoinsTip();
+    // CBlockHeader tip_header = active_tip->GetBlockHeader();
+    std::cout << "Current Height: " << active_tip->nHeight << std::endl;
 
-        if (success) {
-            DisconnectBlock(block);
-        }
+    // Read new block
+    CBlock block = ConsumeBlock(fuzzed_data_provider);//, tip_header.GetHash(), tip_header.nBits);
+    CBlockHeader curr_header = block.GetBlockHeader();
 
-    */
+    BlockValidationState state;
+
+    // Compute new CBlockIndex object
+    CBlockIndex new_index(curr_header);
+    new_index.pprev = active_tip;
+    new_index.nHeight = active_tip->nHeight + 1;
+    new_index.phashBlock = new uint256(curr_header.GetHash());
+
+    bool success = active_chainstate.ConnectBlock(block,
+                                                  state,
+                                                  &new_index,
+                                                  active_coins,
+                                                  /* justCheck*/ true);
+
+    if (success) {
+        std::cout << "Block connected successfully: " << curr_header.GetHash().ToString() << std::endl;
+        std::cout << "State: " << state.ToString() << std::endl;
+        // printf(" %s\n", curr_header.GetHash().ToString());
+
+        // active_chainstate.DisconnectBlock(block, state, &new_index, active_coins);
+    }
+    else {
+        std::cout << "Block connection failed: " << state.GetRejectReason() << std::endl;
+        // printf("Block connection failed: %s\n", state.GetRejectReason());
+        // If the connection failed, we can still try to disconnect the block
+        // to ensure that the disconnect logic is robust.
+        
+        return;
+    }
 
 }
 
