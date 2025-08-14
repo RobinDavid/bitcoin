@@ -262,7 +262,7 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
     block.nBits = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
     block.nNonce = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
     if (fuzzed_data_provider.ConsumeBool()) {
-        block.nBits = lastBlock.nVersion;
+        block.nVersion = lastBlock.nVersion;
     }
     if (fuzzed_data_provider.ConsumeBool()) {
         block.nBits = lastBlock.nBits;
@@ -275,7 +275,7 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
 
     block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider, true));
 
-    int numTx = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
+    int numTx = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 5);
     for (int i = 0; i < numTx; i++) {
         block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider));
     }
