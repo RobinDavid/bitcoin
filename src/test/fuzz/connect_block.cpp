@@ -4,14 +4,17 @@
 
 #include <addresstype.h>
 //#include <chainparams.h>
-//#include <consensus/merkle.h>
+#include <consensus/merkle.h>
 //#include <consensus/validation.h>
 //#include <core_io.h>
 //#include <core_memusage.h>
 //#include <primitives/block.h>
+#include <pow.h>
 //#include <pubkey.h>
 //#include <streams.h>
+#include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
+#include <test/fuzz/util.h>
 #include <test/util/mining.h>
 #include <test/util/script.h>
 #include <test/util/setup_common.h>
@@ -211,13 +214,50 @@ static void initialize_connect_block() {
     */
 }
 
+CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider, bool coinbase=false) {
+
+    CMutableTransaction tx;
+    if (coinbase) {
+        tx.vin.resize(1);
+        tx.vin[0].prevout.SetNull();
+        tx.vin[0].nSequence = CTxIn::MAX_SEQUENCE_NONFINAL; // Make sure timelock is enforced.
+    } else {
+        int numInput = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
+        tx.vin.resize(numInput);
+        for (int i = 0; i < numInput; i++) {
+            if (fuzzed_data_provider.ConsumeBool()) {
+                tx.vin[i] = allUTXO[fuzzed_data_provider.ConsumeIntegralInRange<int32_t>(0, allUTXO.size() - 1)];
+            } else {
+                tx.vin[i].nSequence = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
+                tx.vin[i].prevout.n = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
+                tx.vin[i].prevout.hash = Txid::FromUint256(ConsumeUInt256(fuzzed_data_provider));
+                auto scriptSig = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
+                tx.vin[i].scriptSig = CScript(scriptSig.begin(), scriptSig.end());;
+                for (int j = 0; j < fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10); j++) {
+                    tx.vin[i].scriptWitness.stack.push_back(ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100));
+                }
+            }
+        }
+    }
+
+    int numOutput = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
+    tx.vout.resize(numOutput);
+    for (int i = 0; i < numOutput; i++) {
+        tx.vout[i].nValue = fuzzed_data_provider.ConsumeIntegral<int64_t>();
+        auto scriptPubKey = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
+        tx.vout[i].scriptPubKey = CScript(scriptPubKey.begin(), scriptPubKey.end());;
+    }
+
+    return MakeTransactionRef(tx);
+}
+
 CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
     CBlock block;
     const CBlock& lastBlock = listBlocks.back();
 
     block.nVersion = fuzzed_data_provider.ConsumeIntegral<int32_t>();
-    block.hashPrevBlock = ConsumeDeserializable<uint256>(fuzzed_data_provider);
-    block.hashMerkleRoot = ConsumeDeserializable<uint256>(fuzzed_data_provider);
+    block.hashPrevBlock = ConsumeUInt256(fuzzed_data_provider);
+    block.hashMerkleRoot = ConsumeUInt256(fuzzed_data_provider);
     block.nTime = ConsumeTime(fuzzed_data_provider);
     block.nBits = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
     block.nNonce = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
@@ -233,29 +273,20 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
     bool adjustNonce = fuzzed_data_provider.ConsumeBool();
     bool adjustMerkle = fuzzed_data_provider.ConsumeBool();
 
-
-    // TODO : generate transaction for the block
-
-    CMutableTransaction tx;
-    tx.vin.resize(1);
-    tx.vout.resize(1);
-    tx.vout[0].nValue = 0;
-    tx.vin[0].scriptSig.resize(2);
-    block.vtx.push_back(MakeTransactionRef(tx));
+    block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider, true));
 
     if (adjustMerkle) {
         block.hashMerkleRoot = BlockMerkleRoot(block);
     }
     if (adjustNonce) {
+        const auto& consensus = g_setup->m_node.chainman->GetConsensus();
         block.nNonce = 0;
         // do not check against current nBits (as it may be a huge value)
-        while (!CheckProofOfWork(block.GetHash(), lastBlock.nBits, params.GetConsensus())) {
+        while (!CheckProofOfWork(block.GetHash(), lastBlock.nBits, consensus)) {
             ++block.nNonce;
             if (block.nNonce == 0) break;
         }
     }
-
-
 
     return block;
 }
