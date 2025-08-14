@@ -30,7 +30,22 @@ static std::vector<CTxIn> allUTXO;
 
 static const CScript P2SH_OP_TRUE = CScript() << OP_HASH160 << ToByteVector(ScriptHash(CScript() << OP_TRUE)) << OP_EQUAL;
 static const CScript P2SH_OP_TRUE_UNLOCK = CScript() << MakeUCharSpan(CScript() << OP_TRUE);
+static CScript TAPROOT_OP_TRUE;
+static std::vector<std::vector<uint8_t>> TAPROOT_OP_TRUE_WITNESS;
 
+static void init_taproot_script() {
+    uint256 merkleTreeHash = ComputeTapleafHash(0xc0, MakeUCharSpan(CScript() << OP_TRUE));
+    uint256 internalKey {std::vector<uint8_t>(32, 1)};
+    auto res = XOnlyPubKey(internalKey).CreateTapTweak(&merkleTreeHash);
+    Assert(res.has_value());
+    auto control = ToByteVector(internalKey);
+    control.insert(control.begin(), 0xc0 | (res->second?1:0));
+
+    TAPROOT_OP_TRUE = CScript() << OP_1 << ToByteVector(res->first);
+    TAPROOT_OP_TRUE_WITNESS.clear();
+    TAPROOT_OP_TRUE_WITNESS.emplace_back(ToByteVector(CScript() << OP_TRUE));
+    TAPROOT_OP_TRUE_WITNESS.emplace_back(std::move(control));
+}
 
 void printBlock(const CBlock& block) {
     std::cout << block.ToString() << std::endl;
@@ -75,20 +90,28 @@ void loadCurrentChain() {
                     target.scriptWitness.stack.push_back(WITNESS_STACK_ELEM_OP_TRUE);
                 } else if (vout.scriptPubKey == P2SH_OP_TRUE) {
                     target.scriptSig = P2SH_OP_TRUE_UNLOCK;
+                } else if (vout.scriptPubKey == CScript()) {
+                    target.scriptSig = CScript() << OP_TRUE;
+                } else if (vout.scriptPubKey == TAPROOT_OP_TRUE) {
+                    target.scriptSig = CScript();
+                    target.scriptWitness.stack = TAPROOT_OP_TRUE_WITNESS;
                 }
             }
         }
     }
 }
 
-void initialize_connect_block() {
-    //const auto params{CreateChainParams(ArgsManager{}, ChainType::REGTEST)};
-    //static const auto chain{CreateBlockChain(2 * COINBASE_MATURITY, *params)};
-    //g_chain = &chain;
+static void initialize_connect_block() {
 
     static auto testing_setup = MakeNoLogFileContext<TestingSetup>(
-            /*chain_type=*/ChainType::REGTEST, {});
+            /*chain_type=*/ChainType::REGTEST, {
+                .extra_args = {
+                    "-minrelaytxfee=0",
+                    "-acceptnonstdtxn",
+                },
+            });
     g_setup = testing_setup.get();
+    init_taproot_script();
 
     node::BlockAssembler::Options options;
     options.coinbase_output_script = P2WSH_OP_TRUE;
@@ -97,34 +120,75 @@ void initialize_connect_block() {
         MineBlock(g_setup->m_node, options);
     }
     loadCurrentChain();
-    printBlock(listBlocks[1]);
 
+    Assert(Assert(Assert(g_setup->m_node.chainman)->ActiveChainstate().GetMempool())->size() == 0);
     for (unsigned i = 1; i < 11; i++) {
         CMutableTransaction ctx;
         ctx.version = CTransaction::CURRENT_VERSION;
         ctx.vin.resize(1);
         ctx.vin[0] = allUTXO[i];
-        ctx.vout.resize(2);
+        ctx.vout.resize(4);
         // P2WSH
-        ctx.vout[0].nValue = CAmount(24.5 * COIN);
+        ctx.vout[0].nValue = CAmount(15 * COIN);
         ctx.vout[0].scriptPubKey = P2WSH_OP_TRUE;
         // P2SH
-        ctx.vout[1].nValue = CAmount(24.5 * COIN);
+        ctx.vout[1].nValue = CAmount(15 * COIN);
         ctx.vout[1].scriptPubKey = P2SH_OP_TRUE;
-        std::cout << MakeTransactionRef(ctx)->ToString() << std::endl;
+        // TAPSCRIPT
+        ctx.vout[2].nValue = CAmount(10 * COIN);
+        ctx.vout[2].scriptPubKey = TAPROOT_OP_TRUE;
+        // NoScript
+        ctx.vout[3].nValue = CAmount(10 * COIN);
+        ctx.vout[3].scriptPubKey = CScript();
+
+        //std::cout << MakeTransactionRef(ctx)->ToString() << std::endl;
 
         LOCK(::cs_main);
         const MempoolAcceptResult ctx_result = g_setup->m_node.chainman->ProcessTransaction(MakeTransactionRef(ctx));
         if (ctx_result.m_result_type != MempoolAcceptResult::ResultType::VALID) {
             std::cout << "Transaction rejected : " << ctx_result.m_state.GetRejectReason() << std::endl;
-
         }
         Assert(ctx_result.m_result_type == MempoolAcceptResult::ResultType::VALID);
+
+        Assert(g_setup->m_node.chainman->ActiveChainstate().GetMempool()->size() == i);
+        g_setup->m_node.chainman->ActiveChainstate().GetMempool()->PrioritiseTransaction(ctx.GetHash(), COIN);
     }
 
     MineBlock(g_setup->m_node, options);
+    Assert(g_setup->m_node.chainman->ActiveChainstate().GetMempool()->size() == 0);
+
     loadCurrentChain();
     //printBlock(listBlocks.back());
+
+    if constexpr(0) {
+        // Test usage last transaction
+        for (unsigned i = 1; i < 11; i++) {
+            CMutableTransaction ctx;
+            ctx.version = CTransaction::CURRENT_VERSION;
+            ctx.vin.resize(1);
+            ctx.vin[0] = allUTXO[allUTXO.size() - i];
+            ctx.vout.resize(1);
+            // P2WSH
+            ctx.vout[0].nValue = CAmount(10 * COIN);
+            ctx.vout[0].scriptPubKey = P2WSH_OP_TRUE;
+
+            // std::cout << MakeTransactionRef(ctx)->ToString() << std::endl;
+
+            LOCK(::cs_main);
+            const MempoolAcceptResult ctx_result = g_setup->m_node.chainman->ProcessTransaction(MakeTransactionRef(ctx));
+            if (ctx_result.m_result_type != MempoolAcceptResult::ResultType::VALID) {
+                std::cout << "Transaction2 rejected : " << ctx_result.m_state.GetRejectReason() << std::endl;
+
+            }
+            Assert(ctx_result.m_result_type == MempoolAcceptResult::ResultType::VALID);
+            Assert(g_setup->m_node.chainman->ActiveChainstate().GetMempool()->size() == i);
+            g_setup->m_node.chainman->ActiveChainstate().GetMempool()->PrioritiseTransaction(ctx.GetHash(), COIN);
+        }
+
+        MineBlock(g_setup->m_node, options);
+        loadCurrentChain();
+        printBlock(listBlocks.back());
+    }
 
     /*
     Initialiser chain avec:
