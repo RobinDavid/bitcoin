@@ -103,6 +103,7 @@ void loadCurrentChain() {
 
 static void initialize_connect_block() {
 
+    // Create btc structure
     static auto testing_setup = MakeNoLogFileContext<TestingSetup>(
             /*chain_type=*/ChainType::REGTEST, {
                 .extra_args = {
@@ -116,11 +117,14 @@ static void initialize_connect_block() {
     node::BlockAssembler::Options options;
     options.coinbase_output_script = P2WSH_OP_TRUE;
 
+    // Generate the first 200 block (100 last are not mature, so not spendable)
     for (int i = 0; i < 2 * COINBASE_MATURITY; ++i) {
         MineBlock(g_setup->m_node, options);
     }
     loadCurrentChain();
 
+    // Prepare transaction for the 201 blocks. This blocks will includes
+    // transaction from the first block coinbase tx.
     Assert(Assert(Assert(g_setup->m_node.chainman)->ActiveChainstate().GetMempool())->size() == 0);
     for (unsigned i = 1; i < 11; i++) {
         CMutableTransaction ctx;
@@ -144,6 +148,7 @@ static void initialize_connect_block() {
         //std::cout << MakeTransactionRef(ctx)->ToString() << std::endl;
 
         LOCK(::cs_main);
+        // Add transaction in the mempool
         const MempoolAcceptResult ctx_result = g_setup->m_node.chainman->ProcessTransaction(MakeTransactionRef(ctx));
         if (ctx_result.m_result_type != MempoolAcceptResult::ResultType::VALID) {
             std::cout << "Transaction rejected : " << ctx_result.m_state.GetRejectReason() << std::endl;
@@ -151,6 +156,7 @@ static void initialize_connect_block() {
         Assert(ctx_result.m_result_type == MempoolAcceptResult::ResultType::VALID);
 
         Assert(g_setup->m_node.chainman->ActiveChainstate().GetMempool()->size() == i);
+        // Force the mempool to select this transaction (even if fees == 0)
         g_setup->m_node.chainman->ActiveChainstate().GetMempool()->PrioritiseTransaction(ctx.GetHash(), COIN);
     }
 
@@ -161,7 +167,8 @@ static void initialize_connect_block() {
     //printBlock(listBlocks.back());
 
     if constexpr(0) {
-        // Test usage last transaction
+        // Debug only, try to create the block 202 with tx that use the UTXO of
+        // block 201
         for (unsigned i = 1; i < 11; i++) {
             CMutableTransaction ctx;
             ctx.version = CTransaction::CURRENT_VERSION;
@@ -204,6 +211,54 @@ static void initialize_connect_block() {
     */
 }
 
+CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
+    CBlock block;
+    const CBlock& lastBlock = listBlocks.back();
+
+    block.nVersion = fuzzed_data_provider.ConsumeIntegral<int32_t>();
+    block.hashPrevBlock = ConsumeDeserializable<uint256>(fuzzed_data_provider);
+    block.hashMerkleRoot = ConsumeDeserializable<uint256>(fuzzed_data_provider);
+    block.nTime = ConsumeTime(fuzzed_data_provider);
+    block.nBits = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
+    block.nNonce = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
+    if (fuzzed_data_provider.ConsumeBool()) {
+        block.nBits = lastBlock.nVersion;
+    }
+    if (fuzzed_data_provider.ConsumeBool()) {
+        block.nBits = lastBlock.nBits;
+    }
+    if (fuzzed_data_provider.ConsumeBool()) {
+        block.hashPrevBlock = lastBlock.GetHash();
+    }
+    bool adjustNonce = fuzzed_data_provider.ConsumeBool();
+    bool adjustMerkle = fuzzed_data_provider.ConsumeBool();
+
+
+    // TODO : generate transaction for the block
+
+    CMutableTransaction tx;
+    tx.vin.resize(1);
+    tx.vout.resize(1);
+    tx.vout[0].nValue = 0;
+    tx.vin[0].scriptSig.resize(2);
+    block.vtx.push_back(MakeTransactionRef(tx));
+
+    if (adjustMerkle) {
+        block.hashMerkleRoot = BlockMerkleRoot(block);
+    }
+    if (adjustNonce) {
+        block.nNonce = 0;
+        // do not check against current nBits (as it may be a huge value)
+        while (!CheckProofOfWork(block.GetHash(), lastBlock.nBits, params.GetConsensus())) {
+            ++block.nNonce;
+            if (block.nNonce == 0) break;
+        }
+    }
+
+
+
+    return block;
+}
 
 FUZZ_TARGET(connect_block, .init = initialize_connect_block)
 {
