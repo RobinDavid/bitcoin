@@ -344,5 +344,6 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
         return;
     }
 
+    delete new_index.phashBlock; // Clean up the dynamically allocated memory
 }
 
