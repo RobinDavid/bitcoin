@@ -225,14 +225,22 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider, boo
         int numInput = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
         tx.vin.resize(numInput);
         for (int i = 0; i < numInput; i++) {
+            tx.vin[i] = allUTXO[fuzzed_data_provider.ConsumeIntegralInRange<int32_t>(0, allUTXO.size() - 1)];
             if (fuzzed_data_provider.ConsumeBool()) {
-                tx.vin[i] = allUTXO[fuzzed_data_provider.ConsumeIntegralInRange<int32_t>(0, allUTXO.size() - 1)];
-            } else {
                 tx.vin[i].nSequence = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
+            }
+            if (fuzzed_data_provider.ConsumeBool()) {
                 tx.vin[i].prevout.n = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
+            }
+            if (fuzzed_data_provider.ConsumeBool()) {
                 tx.vin[i].prevout.hash = Txid::FromUint256(ConsumeUInt256(fuzzed_data_provider));
+            }
+            if (fuzzed_data_provider.ConsumeBool()) {
                 auto scriptSig = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
                 tx.vin[i].scriptSig = CScript(scriptSig.begin(), scriptSig.end());;
+            }
+            if (fuzzed_data_provider.ConsumeBool()) {
+                tx.vin[i].scriptWitness.stack.clear();
                 for (int j = 0; j < fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10); j++) {
                     tx.vin[i].scriptWitness.stack.push_back(ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100));
                 }
@@ -317,10 +325,11 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
     BlockValidationState state;
 
     // Compute new CBlockIndex object
+    uint256 currentHash = curr_header.GetHash();
     CBlockIndex new_index(curr_header);
     new_index.pprev = active_tip;
     new_index.nHeight = active_tip->nHeight + 1;
-    new_index.phashBlock = new uint256(curr_header.GetHash());
+    new_index.phashBlock = &currentHash;
 
     bool success = active_chainstate.ConnectBlock(block,
                                                   state,
@@ -340,7 +349,7 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
         // printf("Block connection failed: %s\n", state.GetRejectReason());
         // If the connection failed, we can still try to disconnect the block
         // to ensure that the disconnect logic is robust.
-        
+
         return;
     }
 
