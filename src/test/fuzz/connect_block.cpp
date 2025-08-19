@@ -221,6 +221,8 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider, boo
         tx.vin.resize(1);
         tx.vin[0].prevout.SetNull();
         tx.vin[0].nSequence = CTxIn::MAX_SEQUENCE_NONFINAL; // Make sure timelock is enforced.
+        auto scriptSig = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
+        tx.vin[0].scriptSig = CScript(scriptSig.begin(), scriptSig.end());
     } else {
         int numInput = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
         tx.vin.resize(numInput);
@@ -248,7 +250,7 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider, boo
         }
     }
 
-    int numOutput = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
+    int numOutput = fuzzed_data_provider.ConsumeIntegralInRange<int>(1, 10);
     tx.vout.resize(numOutput);
     for (int i = 0; i < numOutput; i++) {
         tx.vout[i].nValue = fuzzed_data_provider.ConsumeIntegral<int64_t>();
