@@ -27,6 +27,7 @@
 //static const std::vector<std::shared_ptr<CBlock>>* g_chain;
 TestingSetup* g_setup{nullptr};
 static std::vector<CBlock> listBlocks;
+static std::set<uint256> existingBlockHash;
 // all UTXO (excluding OP_RETURN) (including not mature CoinBase and already
 //                                 spend one)
 static std::vector<CTxIn> allUTXO;
@@ -56,6 +57,7 @@ void printBlock(const CBlock& block) {
 
 void loadCurrentChain() {
     listBlocks.clear();
+    existingBlockHash.clear();
 
     {
         LOCK(::cs_main);
@@ -71,6 +73,7 @@ void loadCurrentChain() {
                 listBlocks.resize(currentBlock->nHeight + 1);
             }
             Assert(CState.m_blockman.ReadBlock(listBlocks[currentBlock->nHeight], *currentBlock));
+            existingBlockHash.insert(listBlocks[currentBlock->nHeight].GetHash());
             if constexpr (0) {
                 printBlock(listBlocks[currentBlock->nHeight]);
             }
@@ -105,10 +108,11 @@ void loadCurrentChain() {
 }
 
 static void initialize_connect_block() {
+    fsbridge::setEnableMemFS(true);
 
     // Create btc structure
     static auto testing_setup = MakeNoLogFileContext<TestingSetup>(
-            /*chain_type=*/ChainType::REGTEST, {
+            /*chain_type=*/ChainType::REGTEST, TestOpts{
                 .extra_args = {
                     "-minrelaytxfee=0",
                     "-acceptnonstdtxn",
@@ -293,11 +297,11 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
     if (adjustMerkle) {
         block.hashMerkleRoot = BlockMerkleRoot(block);
     }
-    if (adjustNonce) {
+    if (adjustNonce || existingBlockHash.contains(block.GetHash())) {
         const auto& consensus = g_setup->m_node.chainman->GetConsensus();
         block.nNonce = 0;
         // do not check against current nBits (as it may be a huge value)
-        while (!CheckProofOfWork(block.GetHash(), lastBlock.nBits, consensus)) {
+        while (!CheckProofOfWork(block.GetHash(), lastBlock.nBits, consensus) || existingBlockHash.contains(block.GetHash())) {
             ++block.nNonce;
             if (block.nNonce == 0) break;
         }
@@ -337,14 +341,14 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
                                                   state,
                                                   &new_index,
                                                   active_coins,
-                                                  /* justCheck*/ true);
+                                                  /* justCheck*/ false);
 
     if (success) {
         std::cout << "Block connected successfully: " << curr_header.GetHash().ToString() << std::endl;
         std::cout << "State: " << state.ToString() << std::endl;
         // printf(" %s\n", curr_header.GetHash().ToString());
 
-        // active_chainstate.DisconnectBlock(block, state, &new_index, active_coins);
+        Assert(active_chainstate.DisconnectBlock(block, &new_index, active_coins) == DISCONNECT_OK);
     }
     else {
         std::cout << "Block connection failed: " << state.GetRejectReason() << std::endl;
