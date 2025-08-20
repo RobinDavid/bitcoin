@@ -111,6 +111,9 @@ bool FileCommit(FILE* file)
         LogPrintf("fflush failed: %s\n", SysErrorString(errno));
         return false;
     }
+    if (fsbridge::isMemoryFile(file)) {
+        return true;
+    }
 #ifdef WIN32
     HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(file));
     if (FlushFileBuffers(hFile) == 0) {
@@ -141,7 +144,7 @@ void DirectoryCommit(const fs::path& dirname)
 #ifndef WIN32
     FILE* file = fsbridge::fopen(dirname, "r");
     if (file) {
-        fsync(fileno(file));
+        if (!fsbridge::isMemoryFile(file)) fsync(fileno(file));
         fclose(file);
     }
 #endif
@@ -149,6 +152,7 @@ void DirectoryCommit(const fs::path& dirname)
 
 bool TruncateFile(FILE* file, unsigned int length)
 {
+    if (fsbridge::isMemoryFile(file)) return fsbridge::truncateMemoryFile(file, length);
 #if defined(WIN32)
     return _chsize(_fileno(file), length) == 0;
 #else

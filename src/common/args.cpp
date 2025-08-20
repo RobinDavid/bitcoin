@@ -317,11 +317,13 @@ fs::path ArgsManager::GetDataDir(bool net_specific) const
         path = fs::absolute(datadir);
         if (!fs::is_directory(path)) {
             path = "";
+            fsbridge::setMemFSDatadir(path);
             return path;
         }
     } else {
         path = GetDefaultDataDir();
     }
+    fsbridge::setMemFSDatadir(path);
 
     if (net_specific && !BaseParams().DataDir().empty()) {
         path /= fs::PathFromString(BaseParams().DataDir());

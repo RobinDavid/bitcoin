@@ -204,6 +204,8 @@ static void initialize_connect_block() {
         printBlock(listBlocks.back());
     }
 
+    Assert(fsbridge::createSnapshotMemFS());
+
     /*
     Initialiser chain avec:
     * des blocks "mature" (qui peuvent être dépensé)
@@ -349,6 +351,7 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
         // printf(" %s\n", curr_header.GetHash().ToString());
 
         Assert(active_chainstate.DisconnectBlock(block, &new_index, active_coins) == DISCONNECT_OK);
+        Assert(fsbridge::restoreSnapshotMemFS());
     }
     else {
         std::cout << "Block connection failed: " << state.GetRejectReason() << std::endl;

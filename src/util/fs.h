@@ -208,6 +208,13 @@ bool create_directories(const std::filesystem::path& p, std::error_code& ec) = d
 namespace fsbridge {
     using FopenFn = std::function<FILE*(const fs::path&, const char*)>;
     FILE *fopen(const fs::path& p, const char *mode);
+    bool isMemoryFile(FILE* f);
+    bool truncateMemoryFile(FILE* f, unsigned int length);
+    void setMemFSDatadir(const fs::path& p);
+    void setEnableMemFS(bool v);
+    bool isPathInMemFS(const fs::path& p);
+    bool createSnapshotMemFS();
+    bool restoreSnapshotMemFS();
 
     /**
      * Helper function for joining two paths
