@@ -275,7 +275,7 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider, boo
     return MakeTransactionRef(tx);
 }
 
-CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, bool forcePrevHash=false) {
+CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, bool forcePrevHash=false, bool forceMerkle=false) {
     CBlock block;
     const CBlock& lastBlock = *listBlocks.back();
 
@@ -295,7 +295,7 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, bool forcePrevHash
         block.hashPrevBlock = lastBlock.GetHash();
     }
     bool adjustNonce = fuzzed_data_provider.ConsumeBool();
-    bool adjustMerkle = fuzzed_data_provider.ConsumeBool();
+    bool adjustMerkle = fuzzed_data_provider.ConsumeBool() | forceMerkle;
 
     block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider, true));
 
@@ -321,7 +321,7 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, bool forcePrevHash
 }
 
 static unsigned NumLoop = 0;
-static constexpr unsigned ResetEnvCount = 1000;
+static constexpr unsigned ResetEnvCount = 10000;
 
 void reinitEnv() {
     g_setup->m_node.chainman.reset();
@@ -344,7 +344,11 @@ public:
         SetMockTime(listBlocks.back()->GetBlockTime() + 2);
         tipHash = listBlocks.back()->GetHash();
 
-        if (NumLoop % ResetEnvCount == 0 || g_setup->m_node.chainman->ActiveTip()->GetBlockHash() != tipHash) {
+        if (NumLoop % ResetEnvCount == 0) {
+            std::cout << "Reset by count" << std::endl;
+            reinitEnv();
+        } else if (g_setup->m_node.chainman->ActiveTip()->GetBlockHash() != tipHash) {
+            std::cout << "Reset by wrong tip" << std::endl;
             reinitEnv();
         }
         NumLoop++;
@@ -423,33 +427,28 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
 
     // Read new block
-    CBlock block = ConsumeBlock(fuzzed_data_provider, /* forcePrevHash= */ true);
+    CBlock block = ConsumeBlock(fuzzed_data_provider, /* forcePrevHash= */ true, /* forceMerkleHash= */ true);
     uint256 currentHash = block.GetHash();
-
-    if (g_setup->m_node.chainman->m_blockman.m_block_index.contains(currentHash)) {
-        reinitEnv();
-        if (g_setup->m_node.chainman->m_blockman.m_block_index.contains(currentHash)) {
-            // We already have a block with the same hash in the clean env.
-            // This is unexpected,
-            Assert(false);
-        }
-    }
 
     Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
     CCoinsViewCache& active_coins = active_chainstate.CoinsTip();
-
     std::cout << "Current Height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl;
 
-    CBlockIndex* bestBlock = nullptr;
-    CBlockIndex* blockIndex = active_chainstate.m_blockman.AddToBlockIndex(block, bestBlock);
-    Assert(bestBlock == blockIndex);
-    // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
-    Assert(blockIndex->pprev != nullptr);
+    CBlockIndex* blockIndex = g_setup->m_node.chainman->m_blockman.LookupBlockIndex(currentHash);
+    // if the hash already exists, this means that we got the same block before.
+    // Don't at it a second time.
+    if (blockIndex == nullptr) {
+        CBlockIndex* bestBlock = nullptr;
+        blockIndex = active_chainstate.m_blockman.AddToBlockIndex(block, bestBlock);
+        Assert(bestBlock == blockIndex);
+        // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
+        Assert(blockIndex->pprev != nullptr);
 
-    FlatFilePos pos = active_chainstate.m_blockman.WriteBlock(block, blockIndex->nHeight);
-    Assert(!pos.IsNull());
-    g_setup->m_node.chainman->ReceivedBlockTransactions(block, blockIndex, pos);
-    active_chainstate.ForceFlushStateToDisk();
+        FlatFilePos pos = active_chainstate.m_blockman.WriteBlock(block, blockIndex->nHeight);
+        Assert(!pos.IsNull());
+        g_setup->m_node.chainman->ReceivedBlockTransactions(block, blockIndex, pos);
+        active_chainstate.ForceFlushStateToDisk();
+    }
 
     BlockValidationState state;
     DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
