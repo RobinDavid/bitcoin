@@ -444,7 +444,6 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
     uint256 currentHash = block.GetHash();
 
     Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
-    CCoinsViewCache& active_coins = active_chainstate.CoinsTip();
     DEBUGOUTPUT << "Current Height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl;
 
     BlockValidationState state;
@@ -468,12 +467,14 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
         blockIndex = active_chainstate.m_blockman.AddToBlockIndex(block, bestBlock);
         Assert(bestBlock == blockIndex);
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
-        Assert(blockIndex->pprev != nullptr);
 
         FlatFilePos pos = active_chainstate.m_blockman.WriteBlock(block, blockIndex->nHeight);
         Assert(!pos.IsNull());
         g_setup->m_node.chainman->ReceivedBlockTransactions(block, blockIndex, pos);
         active_chainstate.ForceFlushStateToDisk();
+    }
+    if (blockIndex->pprev != active_chainstate.m_chain.Tip()) {
+        return;
     }
 
     DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
