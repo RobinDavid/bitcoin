@@ -84,13 +84,6 @@ static inline path absolute(const path& p)
     return std::filesystem::absolute(p);
 }
 
-// Disallow implicit std::string conversion for exists to avoid
-// locale-dependent encoding on windows.
-static inline bool exists(const path& p)
-{
-    return std::filesystem::exists(p);
-}
-
 // Allow explicit quoted stream I/O.
 static inline auto quoted(const std::string& s)
 {
@@ -213,8 +206,10 @@ namespace fsbridge {
     void setMemFSDatadir(const fs::path& p);
     void setEnableMemFS(bool v);
     bool isPathInMemFS(const fs::path& p);
+    bool shouldBeMemoryFile(const fs::path& p);
     bool createSnapshotMemFS();
     bool restoreSnapshotMemFS();
+    bool clearMemFS();
 
     /**
      * Helper function for joining two paths
@@ -247,6 +242,19 @@ namespace fsbridge {
 #endif
     };
 };
+
+namespace fs {
+
+// Disallow implicit std::string conversion for exists to avoid
+// locale-dependent encoding on windows.
+static inline bool exists(const fs::path& p)
+{
+    if (fsbridge::shouldBeMemoryFile(p))
+        return fsbridge::isPathInMemFS(p);
+    return std::filesystem::exists(p);
+}
+
+} // namespace fs
 
 // Disallow path operator<< formatting in tinyformat to avoid locale-dependent
 // encoding on windows.

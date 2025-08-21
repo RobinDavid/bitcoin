@@ -354,6 +354,7 @@ private:
 
 class MemoryFS {
     // TODO:
+    //    fs::exists ??
     //    remove file ??
     //    rename file ??
     //    copy file ??
@@ -395,13 +396,11 @@ public:
         }
         LOCK(mut);
         fs::path absPath = std::filesystem::absolute(p);
-        if ((!is_subpath(absPath, datadir)) ||
-             absPath.filename() == ".lock" ||
-             absPath.filename() == "debug.log") {
-            std::cout << "native open " << absPath << std::endl;
+        if (!shouldBeMemoryFileImpl(absPath)) {
+            // std::cout << "native open " << absPath << std::endl;
             return ::fopen(p.c_str(), mode);
         }
-        std::cout << "open " << absPath << " with mode " << mode << std::endl;
+        // std::cout << "open " << absPath << " with mode " << mode << std::endl;
 
         auto inserted = fileInfos.try_emplace(absPath, FileInfo{});
         FileInfo& fileInfo = inserted.first->second;
@@ -422,7 +421,7 @@ public:
         if (res == nullptr) {
             if (inserted.second) {
                 fileInfos.erase(inserted.first);
-                std::cout << "Fail to open " << absPath << std::endl;
+                // std::cout << "Fail to open " << absPath << std::endl;
             }
             return nullptr;
         }
@@ -438,7 +437,7 @@ public:
         auto it = openFile.find(f.getCurrentFile());
         if (it != openFile.end()) {
             fs::path p = it->second;
-            std::cout << "Close " << p << std::endl;
+            // std::cout << "Close " << p << std::endl;
             openFile.erase(it);
         } else {
             std::cerr << "Call close on unknonw openFile." << std::endl;
@@ -482,6 +481,19 @@ public:
         return fileInfos.contains(p);
     }
 
+    bool shouldBeMemoryFile(const fs::path& p) EXCLUSIVE_LOCKS_REQUIRED(!mut) {
+        if (!enable) return false;
+        LOCK(mut);
+        return shouldBeMemoryFileImpl(p);
+    }
+
+    bool shouldBeMemoryFileImpl(const fs::path& p) EXCLUSIVE_LOCKS_REQUIRED(mut) {
+        fs::path absPath = std::filesystem::absolute(p);
+        return is_subpath(absPath, datadir) &&
+             absPath.filename() != ".lock" &&
+             absPath.filename() != "debug.log";
+    }
+
     bool createSnapshot() EXCLUSIVE_LOCKS_REQUIRED(!mut) {
         if (!enable) return false;
         LOCK(mut);
@@ -523,6 +535,14 @@ public:
         }
         return true;
     }
+
+    bool clearMemFS() EXCLUSIVE_LOCKS_REQUIRED(!mut) {
+        if (!enable) return false;
+        LOCK(mut);
+        if (openFile.size() != 0) return false;
+        fileInfos.clear();
+        return true;
+    }
 };
 
 static MemoryFS memfs;
@@ -557,6 +577,11 @@ bool isMemoryFile(FILE* f) {
     return memfs.isMemoryFile(f);
 }
 
+bool shouldBeMemoryFile(const fs::path& p) {
+    // std::cout << "shouldBeMemoryFile : " << p << std::endl;
+    return memfs.shouldBeMemoryFile(p);
+}
+
 bool isPathInMemFS(const fs::path& p) {
     return memfs.isPathInMemFS(p);
 }
@@ -571,6 +596,10 @@ bool createSnapshotMemFS() {
 
 bool restoreSnapshotMemFS() {
     return memfs.restoreSnapshot();
+}
+
+bool clearMemFS() {
+    return memfs.clearMemFS();
 }
 
 fs::path AbsPathJoin(const fs::path& base, const fs::path& path)

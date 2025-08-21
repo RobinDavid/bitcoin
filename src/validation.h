@@ -434,7 +434,39 @@ enum DisconnectResult
     DISCONNECT_FAILED   // Something else went wrong.
 };
 
-class ConnectTrace;
+struct PerBlockConnectTrace {
+    CBlockIndex* pindex = nullptr;
+    std::shared_ptr<const CBlock> pblock;
+    PerBlockConnectTrace() = default;
+};
+class ConnectTrace {
+private:
+    std::vector<PerBlockConnectTrace> blocksConnected;
+
+public:
+    explicit ConnectTrace() : blocksConnected(1) {}
+
+    void BlockConnected(CBlockIndex* pindex, std::shared_ptr<const CBlock> pblock) {
+        assert(!blocksConnected.back().pindex);
+        assert(pindex);
+        assert(pblock);
+        blocksConnected.back().pindex = pindex;
+        blocksConnected.back().pblock = std::move(pblock);
+        blocksConnected.emplace_back();
+    }
+
+    std::vector<PerBlockConnectTrace>& GetBlocksConnected() {
+        // We always keep one extra block at the end of our list because
+        // blocks are added after all the conflicted transactions have
+        // been filled in. Thus, the last entry should always be an empty
+        // one waiting for the transactions from the next block. We pop
+        // the last entry here to make sure the list we return is sane.
+        assert(!blocksConnected.back().pindex);
+        blocksConnected.pop_back();
+        return blocksConnected;
+    }
+};
+
 
 /** @see Chainstate::FlushStateToDisk */
 enum class FlushStateMode {
@@ -770,17 +802,9 @@ public:
         return m_mempool ? &m_mempool->cs : nullptr;
     }
 
-private:
+    // public for fuzzing
     bool ActivateBestChainStep(BlockValidationState& state, CBlockIndex* pindexMostWork, const std::shared_ptr<const CBlock>& pblock, bool& fInvalidFound, ConnectTrace& connectTrace) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
     bool ConnectTip(BlockValidationState& state, CBlockIndex* pindexNew, const std::shared_ptr<const CBlock>& pblock, ConnectTrace& connectTrace, DisconnectedBlockTransactions& disconnectpool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
-
-    void InvalidBlockFound(CBlockIndex* pindex, const BlockValidationState& state) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-    CBlockIndex* FindMostWorkChain() EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-
-    bool RollforwardBlock(const CBlockIndex* pindex, CCoinsViewCache& inputs) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-
-    void CheckForkWarningConditions() EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-    void InvalidChainFound(CBlockIndex* pindexNew) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     /**
      * Make mempool consistent after a reorg, by re-adding or recursively erasing
@@ -798,6 +822,16 @@ private:
     void MaybeUpdateMempoolForReorg(
         DisconnectedBlockTransactions& disconnectpool,
         bool fAddToMempool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
+
+private:
+
+    void InvalidBlockFound(CBlockIndex* pindex, const BlockValidationState& state) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    CBlockIndex* FindMostWorkChain() EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+
+    bool RollforwardBlock(const CBlockIndex* pindex, CCoinsViewCache& inputs) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+
+    void CheckForkWarningConditions() EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    void InvalidChainFound(CBlockIndex* pindexNew) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     /** Check warning conditions and do some notifications on new chain tip set. */
     void UpdateTip(const CBlockIndex* pindexNew)

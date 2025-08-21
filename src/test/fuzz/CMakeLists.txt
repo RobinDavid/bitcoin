@@ -17,7 +17,6 @@ add_executable(fuzz
   bitdeque.cpp
   bitset.cpp
   block.cpp
-  connect_block.cpp
   block_header.cpp
   block_index.cpp
   blockfilter.cpp
@@ -28,6 +27,7 @@ add_executable(fuzz
   cluster_linearize.cpp
   coins_view.cpp
   coinscache_sim.cpp
+  connect_block.cpp
   connman.cpp
   crypto.cpp
   crypto_aes256.cpp

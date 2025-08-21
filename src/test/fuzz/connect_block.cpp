@@ -9,6 +9,7 @@
 //#include <core_io.h>
 //#include <core_memusage.h>
 //#include <primitives/block.h>
+#include <kernel/disconnected_transactions.h>
 #include <pow.h>
 //#include <pubkey.h>
 //#include <streams.h>
@@ -24,9 +25,10 @@
 #include <cassert>
 #include <string>
 
-//static const std::vector<std::shared_ptr<CBlock>>* g_chain;
+namespace {
+
 TestingSetup* g_setup{nullptr};
-static std::vector<CBlock> listBlocks;
+static std::vector<std::shared_ptr<CBlock>> listBlocks;
 static std::set<uint256> existingBlockHash;
 // all UTXO (excluding OP_RETURN) (including not mature CoinBase and already
 //                                 spend one)
@@ -51,11 +53,11 @@ static void init_taproot_script() {
     TAPROOT_OP_TRUE_WITNESS.emplace_back(std::move(control));
 }
 
-void printBlock(const CBlock& block) {
+[[maybe_unused]] static void printBlock(const CBlock& block) {
     std::cout << block.ToString() << std::endl;
 }
 
-void loadCurrentChain() {
+static void loadCurrentChain() {
     listBlocks.clear();
     existingBlockHash.clear();
 
@@ -72,10 +74,11 @@ void loadCurrentChain() {
             if (listBlocks.size() <= (size_t) currentBlock->nHeight) {
                 listBlocks.resize(currentBlock->nHeight + 1);
             }
-            Assert(CState.m_blockman.ReadBlock(listBlocks[currentBlock->nHeight], *currentBlock));
-            existingBlockHash.insert(listBlocks[currentBlock->nHeight].GetHash());
+            listBlocks[currentBlock->nHeight] = std::make_shared<CBlock>();
+            Assert(CState.m_blockman.ReadBlock(*listBlocks[currentBlock->nHeight], *currentBlock));
+            existingBlockHash.insert(listBlocks[currentBlock->nHeight]->GetHash());
             if constexpr (0) {
-                printBlock(listBlocks[currentBlock->nHeight]);
+                printBlock(*listBlocks[currentBlock->nHeight]);
             }
             currentBlock = currentBlock->pprev;
         }
@@ -86,7 +89,7 @@ void loadCurrentChain() {
     allUTXO.clear();
 
     for (const auto& b : listBlocks) {
-        for (const auto& tx: b.vtx) {
+        for (const auto& tx: b->vtx) {
             for (unsigned voutIndex = 0; voutIndex < tx->vout.size(); voutIndex++) {
                 auto& vout = tx->vout[voutIndex];
                 if (vout.scriptPubKey.size() >= 1 && vout.scriptPubKey[0] == OP_RETURN) continue;
@@ -112,10 +115,12 @@ static void initialize_connect_block() {
 
     // Create btc structure
     static auto testing_setup = MakeNoLogFileContext<TestingSetup>(
+    //static auto testing_setup = std::make_shared<TestingSetup>(
             /*chain_type=*/ChainType::REGTEST, TestOpts{
                 .extra_args = {
                     "-minrelaytxfee=0",
                     "-acceptnonstdtxn",
+                    // "-debuglogfile=/tmp/debug.log",
                 },
             });
     g_setup = testing_setup.get();
@@ -171,7 +176,7 @@ static void initialize_connect_block() {
     Assert(g_setup->m_node.chainman->ActiveChainstate().GetMempool()->size() == 0);
 
     loadCurrentChain();
-    //printBlock(listBlocks.back());
+    //printBlock(*listBlocks.back());
 
     if constexpr(0) {
         // Debug only, try to create the block 202 with tx that use the UTXO of
@@ -201,10 +206,11 @@ static void initialize_connect_block() {
 
         MineBlock(g_setup->m_node, options);
         loadCurrentChain();
-        printBlock(listBlocks.back());
+        printBlock(*listBlocks.back());
     }
 
-    Assert(fsbridge::createSnapshotMemFS());
+    g_setup->m_node.chainman->ActiveChainstate().ForceFlushStateToDisk();
+    //Assert(fsbridge::createSnapshotMemFS());
 
     /*
     Initialiser chain avec:
@@ -267,9 +273,9 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider, boo
     return MakeTransactionRef(tx);
 }
 
-CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
+CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, bool forcePrevHash=false) {
     CBlock block;
-    const CBlock& lastBlock = listBlocks.back();
+    const CBlock& lastBlock = *listBlocks.back();
 
     block.nVersion = fuzzed_data_provider.ConsumeIntegral<int32_t>();
     block.hashPrevBlock = ConsumeUInt256(fuzzed_data_provider);
@@ -283,7 +289,7 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
     if (fuzzed_data_provider.ConsumeBool()) {
         block.nBits = lastBlock.nBits;
     }
-    if (fuzzed_data_provider.ConsumeBool()) {
+    if (fuzzed_data_provider.ConsumeBool() || forcePrevHash) {
         block.hashPrevBlock = lastBlock.GetHash();
     }
     bool adjustNonce = fuzzed_data_provider.ConsumeBool();
@@ -312,13 +318,56 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider) {
     return block;
 }
 
+static unsigned NumLoop = 0;
+static constexpr unsigned ResetEnvCount = 1000;
+
+void reinitEnv() {
+    g_setup->m_node.chainman.reset();
+    Assert(fsbridge::clearMemFS());
+    g_setup->m_make_chainman();
+    g_setup->LoadVerifyActivateChainstate();
+    for (const auto&b : listBlocks) {
+        if (b == listBlocks.front()) continue;
+        ProcessBlock(g_setup->m_node, b);
+    }
+}
+
+class Cleanup {
+
+    uint256 tipHash;
+public:
+    Cleanup() {
+        SeedRandomStateForTest(SeedRand::ZEROS);
+        SetMockTime(listBlocks.back()->GetBlockTime() + 2);
+        tipHash = listBlocks.back()->GetHash();
+
+        if (NumLoop % ResetEnvCount == 0 || g_setup->m_node.chainman->ActiveTip()->GetBlockHash() != tipHash) {
+            reinitEnv();
+        }
+        NumLoop++;
+        Assert(g_setup->m_node.chainman->ActiveTip()->GetBlockHash() == tipHash);
+    }
+
+    ~Cleanup() {
+        // cleanup mempool
+        CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
+        Assert(mempool);
+        while (mempool->size() > 0) {
+            const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
+            mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
+        }
+    }
+};
+
+} // anonymous namespace
+
 FUZZ_TARGET(connect_block, .init = initialize_connect_block)
 {
+    LOCK(::cs_main);
+    Cleanup cleanEnvAtExit {};
+
     // Initialize data provider
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
-
-    // AssertLockHeld(cs_main);
-    LOCK(::cs_main);
 
     Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
     CBlockIndex* active_tip = active_chainstate.m_chain.Tip();
@@ -351,7 +400,6 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
         // printf(" %s\n", curr_header.GetHash().ToString());
 
         Assert(active_chainstate.DisconnectBlock(block, &new_index, active_coins) == DISCONNECT_OK);
-        Assert(fsbridge::restoreSnapshotMemFS());
     }
     else {
         std::cout << "Block connection failed: " << state.GetRejectReason() << std::endl;
@@ -360,6 +408,75 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
         // to ensure that the disconnect logic is robust.
 
         return;
+    }
+}
+
+FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
+{
+    LOCK(::cs_main);
+    Cleanup cleanEnvAtExit {};
+
+    // Initialize data provider
+    FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
+
+    // Read new block
+    CBlock block = ConsumeBlock(fuzzed_data_provider, /* forcePrevHash= */ true);
+    uint256 currentHash = block.GetHash();
+
+    if (g_setup->m_node.chainman->m_blockman.m_block_index.contains(currentHash)) {
+        reinitEnv();
+        if (g_setup->m_node.chainman->m_blockman.m_block_index.contains(currentHash)) {
+            // We already have a block with the same hash in the clean env.
+            // This is unexpected,
+            Assert(false);
+        }
+    }
+
+    Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
+    CCoinsViewCache& active_coins = active_chainstate.CoinsTip();
+
+    std::cout << "Current Height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl;
+
+    CBlockIndex* bestBlock = nullptr;
+    CBlockIndex* blockIndex = active_chainstate.m_blockman.AddToBlockIndex(block, bestBlock);
+    Assert(bestBlock == blockIndex);
+    // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
+    Assert(blockIndex->pprev != nullptr);
+
+    FlatFilePos pos = active_chainstate.m_blockman.WriteBlock(block, blockIndex->nHeight);
+    Assert(!pos.IsNull());
+    g_setup->m_node.chainman->ReceivedBlockTransactions(block, blockIndex, pos);
+    active_chainstate.ForceFlushStateToDisk();
+
+    BlockValidationState state;
+    DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
+    ConnectTrace connectTrace;
+
+    {
+        LOCK(active_chainstate.MempoolMutex());
+        bool success = active_chainstate.ConnectTip(state, blockIndex, nullptr, connectTrace, disconnectpool);
+        if (success) {
+            std::cout << "Tip connected successfully: " << currentHash.ToString() << std::endl;
+            std::cout << "State: " << state.ToString() << std::endl;
+
+            disconnectpool.clear();
+
+            if (active_chainstate.DisconnectTip(state, &disconnectpool)) {
+                std::cout << "Tip disconnected successfully" << std::endl;
+                std::cout << "State: " << state.ToString() << std::endl;
+            } else {
+                std::cout << "Block disconnection failed: " << state.GetRejectReason() << std::endl;
+                Assert(false);
+            }
+            active_chainstate.MaybeUpdateMempoolForReorg(disconnectpool, false);
+        } else {
+            std::cout << "Block connection failed: " << state.GetRejectReason() << std::endl;
+            // printf("Block connection failed: %s\n", state.GetRejectReason());
+            // If the connection failed, we can still try to disconnect the block
+            // to ensure that the disconnect logic is robust.
+
+            return;
+        }
     }
 }
 
