@@ -10,6 +10,7 @@
 //#include <core_memusage.h>
 //#include <primitives/block.h>
 #include <kernel/disconnected_transactions.h>
+#include <node/kernel_notifications.h>
 #include <pow.h>
 //#include <pubkey.h>
 //#include <streams.h>
@@ -124,6 +125,7 @@ static void initialize_connect_block() {
                 },
             });
     g_setup = testing_setup.get();
+    g_setup->m_node.notifications->m_shutdown_on_fatal_error = false;
     init_taproot_script();
 
     node::BlockAssembler::Options options;
@@ -325,6 +327,7 @@ void reinitEnv() {
     g_setup->m_node.chainman.reset();
     Assert(fsbridge::clearMemFS());
     g_setup->m_make_chainman();
+    g_setup->m_node.notifications->m_shutdown_on_fatal_error = false;
     g_setup->LoadVerifyActivateChainstate();
     for (const auto&b : listBlocks) {
         if (b == listBlocks.front()) continue;
