@@ -401,7 +401,7 @@ public:
         Assert(!g_setup->m_interrupt);
 
         Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
-        while (active_chainstate.m_chain.Tip()->nHeight > (int) listBlocks.size()) {
+        while (active_chainstate.m_chain.Tip()->nHeight >= (int) listBlocks.size()) {
             DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
             ConnectTrace connectTrace;
             BlockValidationState state;
