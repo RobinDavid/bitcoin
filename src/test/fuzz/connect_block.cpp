@@ -55,14 +55,13 @@ static void init_taproot_script() {
 }
 
 #if 0
-#define DEBUGOUTPUT std::cout
+#define DEBUGOUTPUT(x) (x);
 #else
-static std::ostream dev_null{nullptr};
-#define DEBUGOUTPUT dev_null
+#define DEBUGOUTPUT(x)
 #endif
 
 [[maybe_unused]] static void printBlock(const CBlock& block) {
-    DEBUGOUTPUT << block.ToString() << std::endl;
+    DEBUGOUTPUT(std::cout << block.ToString() << std::endl);
 }
 
 static CTxIn getResolvUTXO(const CTransaction& tx, unsigned voutIndex) {
@@ -114,7 +113,7 @@ static void loadCurrentChain() {
             currentBlock = currentBlock->pprev;
         }
         if constexpr (0) {
-            DEBUGOUTPUT << "CoinsDB output : " << CState.CoinsDB().StoragePath() << std::endl;
+            DEBUGOUTPUT(std::cout << "CoinsDB output : " << CState.CoinsDB().StoragePath() << std::endl);
         }
     }
     allUTXO.clear();
@@ -178,13 +177,13 @@ static void initialize_connect_block() {
         ctx.vout[3].nValue = CAmount(10 * COIN);
         ctx.vout[3].scriptPubKey = CScript();
 
-        //DEBUGOUTPUT << MakeTransactionRef(ctx)->ToString() << std::endl;
+        //DEBUGOUTPUT(std::cout << MakeTransactionRef(ctx)->ToString() << std::endl);
 
         LOCK(::cs_main);
         // Add transaction in the mempool
         const MempoolAcceptResult ctx_result = g_setup->m_node.chainman->ProcessTransaction(MakeTransactionRef(ctx));
         if (ctx_result.m_result_type != MempoolAcceptResult::ResultType::VALID) {
-            DEBUGOUTPUT << "Transaction rejected : " << ctx_result.m_state.GetRejectReason() << std::endl;
+            DEBUGOUTPUT(std::cout << "Transaction rejected : " << ctx_result.m_state.GetRejectReason() << std::endl);
         }
         Assert(ctx_result.m_result_type == MempoolAcceptResult::ResultType::VALID);
 
@@ -212,12 +211,12 @@ static void initialize_connect_block() {
             ctx.vout[0].nValue = CAmount(10 * COIN);
             ctx.vout[0].scriptPubKey = P2WSH_OP_TRUE;
 
-            // DEBUGOUTPUT << MakeTransactionRef(ctx)->ToString() << std::endl;
+            // DEBUGOUTPUT(std::cout << MakeTransactionRef(ctx)->ToString() << std::endl);
 
             LOCK(::cs_main);
             const MempoolAcceptResult ctx_result = g_setup->m_node.chainman->ProcessTransaction(MakeTransactionRef(ctx));
             if (ctx_result.m_result_type != MempoolAcceptResult::ResultType::VALID) {
-                DEBUGOUTPUT << "Transaction2 rejected : " << ctx_result.m_state.GetRejectReason() << std::endl;
+                DEBUGOUTPUT(std::cout << "Transaction2 rejected : " << ctx_result.m_state.GetRejectReason() << std::endl);
 
             }
             Assert(ctx_result.m_result_type == MempoolAcceptResult::ResultType::VALID);
@@ -294,8 +293,30 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider,
     tx.vout.resize(numOutput);
     for (int i = 0; i < numOutput; i++) {
         tx.vout[i].nValue = fuzzed_data_provider.ConsumeIntegral<int64_t>();
-        auto scriptPubKey = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
-        tx.vout[i].scriptPubKey = CScript(scriptPubKey.begin(), scriptPubKey.end());;
+
+        switch(fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 4)) {
+            case 0:
+                // P2WSH
+                tx.vout[i].scriptPubKey = P2WSH_OP_TRUE;
+                break;
+            case 1:
+                // P2SH
+                tx.vout[i].scriptPubKey = P2SH_OP_TRUE;
+                break;
+            case 2:
+                // TAPSCRIPT
+                tx.vout[i].scriptPubKey = TAPROOT_OP_TRUE;
+                break;
+            case 3:
+                // NoScript
+                tx.vout[i].scriptPubKey = CScript();
+                break;
+            default: {
+                auto scriptPubKey = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
+                tx.vout[i].scriptPubKey = CScript(scriptPubKey.begin(), scriptPubKey.end());;
+                break;
+            }
+        }
     }
 
     auto res = MakeTransactionRef(tx);
@@ -380,10 +401,10 @@ public:
         tipHash = listBlocks.back()->GetHash();
 
         if (NumLoop % ResetEnvCount == 0) {
-            DEBUGOUTPUT << "Reset by count" << std::endl;
+            DEBUGOUTPUT(std::cout << "Reset by count" << std::endl);
             reinitEnv();
         } else if (g_setup->m_node.chainman->ActiveTip()->GetBlockHash() != tipHash) {
-            DEBUGOUTPUT << "Reset by wrong tip" << std::endl;
+            DEBUGOUTPUT(std::cout << "Reset by wrong tip" << std::endl);
             reinitEnv();
         }
         NumLoop++;
@@ -444,7 +465,7 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
     CBlockIndex* active_tip = active_chainstate.m_chain.Tip();
     CCoinsViewCache& active_coins = active_chainstate.CoinsTip();
     // CBlockHeader tip_header = active_tip->GetBlockHeader();
-    DEBUGOUTPUT << "Current Height: " << active_tip->nHeight << std::endl;
+    DEBUGOUTPUT(std::cout << "Current Height: " << active_tip->nHeight << std::endl);
 
     // Read new block
     std::vector<CTxIn> additionnalUTXO;
@@ -454,7 +475,7 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
     BlockValidationState state;
     const auto& consensus = g_setup->m_node.chainman->GetConsensus();
     if (!CheckBlock(block, state, consensus)) {
-        DEBUGOUTPUT << "Block invalid: " << state.GetRejectReason() << std::endl;
+        DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
         return;
     }
 
@@ -472,14 +493,14 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
                                                   /* justCheck*/ false);
 
     if (success) {
-        DEBUGOUTPUT << "Block connected successfully: " << curr_header.GetHash().ToString() << std::endl;
-        DEBUGOUTPUT << "State: " << state.ToString() << std::endl;
+        DEBUGOUTPUT(std::cout << "Block connected successfully: " << curr_header.GetHash().ToString() << std::endl);
+        DEBUGOUTPUT(std::cout << "State: " << state.ToString() << std::endl);
         // printf(" %s\n", curr_header.GetHash().ToString());
 
         Assert(active_chainstate.DisconnectBlock(block, &new_index, active_coins) == DISCONNECT_OK);
     }
     else {
-        DEBUGOUTPUT << "Block connection failed: " << state.GetRejectReason() << std::endl;
+        DEBUGOUTPUT(std::cout << "Block connection failed: " << state.GetRejectReason() << std::endl);
         // printf("Block connection failed: %s\n", state.GetRejectReason());
         // If the connection failed, we can still try to disconnect the block
         // to ensure that the disconnect logic is robust.
@@ -499,10 +520,9 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
     // Read new block
     std::vector<CTxIn> additionnalUTXO;
     CBlock block = ConsumeBlock(fuzzed_data_provider, *listBlocks.back(), additionnalUTXO);
-    uint256 currentHash = block.GetHash();
 
     Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
-    DEBUGOUTPUT << "Current Height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl;
+    DEBUGOUTPUT(std::cout << "Current Height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
 
     BlockValidationState state;
     const auto& consensus = g_setup->m_node.chainman->GetConsensus();
@@ -510,12 +530,12 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
         // do not test invalid block, as they will never be written on disk.
         // If an invalid block is written, it may raise an error when trying to
         // read it
-        DEBUGOUTPUT << "Block invalid: " << state.GetRejectReason() << std::endl;
+        DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
         return;
     }
 
-    DEBUGOUTPUT << "Block generated : " << std::endl;
-    DEBUGOUTPUT << block.ToString() << std::endl;
+    DEBUGOUTPUT(std::cout << "Block generated : " << std::endl);
+    DEBUGOUTPUT(std::cout << block.ToString() << std::endl);
 
     CBlockIndex* blockIndex = writeBlock(block);
     // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
@@ -530,21 +550,21 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
         LOCK(active_chainstate.MempoolMutex());
         bool success = active_chainstate.ConnectTip(state, blockIndex, nullptr, connectTrace, disconnectpool);
         if (success) {
-            DEBUGOUTPUT << "Tip connected successfully: " << currentHash.ToString() << std::endl;
-            DEBUGOUTPUT << "State: " << state.ToString() << std::endl;
+            DEBUGOUTPUT(std::cout << "Tip connected successfully: " << block.GetHash().ToString() << std::endl);
+            DEBUGOUTPUT(std::cout << "State: " << state.ToString() << std::endl);
 
             disconnectpool.clear();
 
             if (active_chainstate.DisconnectTip(state, &disconnectpool)) {
-                DEBUGOUTPUT << "Tip disconnected successfully" << std::endl;
-                DEBUGOUTPUT << "State: " << state.ToString() << std::endl;
+                DEBUGOUTPUT(std::cout << "Tip disconnected successfully" << std::endl);
+                DEBUGOUTPUT(std::cout << "State: " << state.ToString() << std::endl);
             } else {
-                DEBUGOUTPUT << "Block disconnection failed: " << state.GetRejectReason() << std::endl;
+                DEBUGOUTPUT(std::cout << "Block disconnection failed: " << state.GetRejectReason() << std::endl);
                 Assert(false);
             }
             active_chainstate.MaybeUpdateMempoolForReorg(disconnectpool, false);
         } else {
-            DEBUGOUTPUT << "Block connection failed: " << state.GetRejectReason() << std::endl;
+            DEBUGOUTPUT(std::cout << "Block connection failed: " << state.GetRejectReason() << std::endl);
             // printf("Block connection failed: %s\n", state.GetRejectReason());
             // If the connection failed, we can still try to disconnect the block
             // to ensure that the disconnect logic is robust.
@@ -563,7 +583,7 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
 
     Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
-    DEBUGOUTPUT << "Current Height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl;
+    DEBUGOUTPUT(std::cout << "Begin with height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
 
     // Step 1 : create few block and add them to the chain
     std::vector<CTxIn> additionnalUTXO;
@@ -579,16 +599,17 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
             // do not test invalid block, as they will never be written on disk.
             // If an invalid block is written, it may raise an error when trying to
             // read it
-            DEBUGOUTPUT << "Block invalid: " << state.GetRejectReason() << std::endl;
+            DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
             return;
         }
         CBlockIndex* blockIndex = writeBlock(block);
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
+            DEBUGOUTPUT(std::cout << "Block invalid (pprev)" << std::endl);
             return;
         }
 
-        DEBUGOUTPUT << "Step1 NewBlock: "<< block.GetHash() << std::endl;
+        DEBUGOUTPUT(std::cout << "Step1 NewBlock: "<< block.GetHash() << std::endl);
         prevBlock = std::make_shared<CBlock>(block);
         prevIndex = blockIndex;
 
@@ -598,7 +619,7 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
     }
 
     // Step2: switch to this branch
-    {
+    do {
         LOCK(active_chainstate.MempoolMutex());
         DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
         ConnectTrace connectTrace;
@@ -607,15 +628,15 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
         bool foundInvalid = false;
 
         if (!active_chainstate.ActivateBestChainStep(state, prevIndex, prevBlock, foundInvalid, connectTrace)) {
-            DEBUGOUTPUT << "Step2 Fail" << std::endl;
+            DEBUGOUTPUT(std::cout << "Step2 Fail" << std::endl);
             return;
         }
         if (foundInvalid) {
-            DEBUGOUTPUT << "Step2 Invalid" << std::endl;
+            DEBUGOUTPUT(std::cout << "Step2 Invalid" << std::endl);
             return;
         }
-        DEBUGOUTPUT << "Step2 Success" << std::endl;
-    }
+        DEBUGOUTPUT(std::cout << "Step2 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
+    } while (active_chainstate.m_chain.Tip()->nHeight < prevIndex->nHeight);
 
     // Step 3 : create a fork from the same origin than step1 and add them to the chain
     additionnalUTXO.clear();
@@ -629,16 +650,17 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
             // do not test invalid block, as they will never be written on disk.
             // If an invalid block is written, it may raise an error when trying to
             // read it
-            DEBUGOUTPUT << "Block invalid: " << state.GetRejectReason() << std::endl;
+            DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
             return;
         }
         CBlockIndex* blockIndex = writeBlock(block);
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
+            DEBUGOUTPUT(std::cout << "Block invalid (pprev)" << std::endl);
             return;
         }
 
-        DEBUGOUTPUT << "Step3 NewBlock: "<< block.GetHash() << std::endl;
+        DEBUGOUTPUT(std::cout << "Step3 NewBlock: "<< block.GetHash() << std::endl);
         prevBlock = std::make_shared<CBlock>(block);
         prevIndex = blockIndex;
 
@@ -648,7 +670,7 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
     }
 
     // Step4: rollback the previous branch and switch to this new one
-    {
+    do {
         LOCK(active_chainstate.MempoolMutex());
         DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
         ConnectTrace connectTrace;
@@ -657,13 +679,13 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
         bool foundInvalid = false;
 
         if (!active_chainstate.ActivateBestChainStep(state, prevIndex, prevBlock, foundInvalid, connectTrace)) {
-            DEBUGOUTPUT << "Step4 Fail" << std::endl;
+            DEBUGOUTPUT(std::cout << "Step4 Fail" << std::endl);
             return;
         }
         if (foundInvalid) {
-            DEBUGOUTPUT << "Step4 Invalid" << std::endl;
+            DEBUGOUTPUT(std::cout << "Step4 Invalid" << std::endl);
             return;
         }
-        DEBUGOUTPUT << "Step4 Success" << std::endl;
-    }
+        DEBUGOUTPUT(std::cout << "Step4 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
+    } while (active_chainstate.m_chain.Tip()->nHeight < prevIndex->nHeight);
 }
