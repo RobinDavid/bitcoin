@@ -26,6 +26,12 @@
 #include <cassert>
 #include <string>
 
+#if 0
+#define DEBUGOUTPUT(x) (x);
+#else
+#define DEBUGOUTPUT(x)
+#endif
+
 namespace {
 
 TestingSetup* g_setup{nullptr};
@@ -53,12 +59,6 @@ static void init_taproot_script() {
     TAPROOT_OP_TRUE_WITNESS.emplace_back(ToByteVector(CScript() << OP_TRUE));
     TAPROOT_OP_TRUE_WITNESS.emplace_back(std::move(control));
 }
-
-#if 0
-#define DEBUGOUTPUT(x) (x);
-#else
-#define DEBUGOUTPUT(x)
-#endif
 
 [[maybe_unused]] static void printBlock(const CBlock& block) {
     DEBUGOUTPUT(std::cout << block.ToString() << std::endl);
@@ -378,6 +378,7 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, const CBlock& prev
 
 static unsigned NumLoop = 0;
 static constexpr unsigned ResetEnvCount = 50000;
+static bool durtyEnv = false;
 
 void reinitEnv() {
     g_setup->m_node.chainman.reset();
@@ -389,46 +390,57 @@ void reinitEnv() {
         if (b == listBlocks.front()) continue;
         ProcessBlock(g_setup->m_node, b);
     }
+    durtyEnv = false;
 }
 
 class Cleanup {
 
     uint256 tipHash;
+    bool forceClean;
 public:
-    Cleanup() {
+    Cleanup(bool forceClean_=false) : forceClean(forceClean_) {
         SeedRandomStateForTest(SeedRand::ZEROS);
         SetMockTime(listBlocks.back()->GetBlockTime() + 2);
         tipHash = listBlocks.back()->GetHash();
 
-        if (NumLoop % ResetEnvCount == 0) {
+        if (forceClean) {
+            if (durtyEnv) {
+                reinitEnv();
+            }
+            Assert(g_setup->m_node.chainman->ActiveTip()->GetBlockHash() == tipHash);
+        } else if (NumLoop % ResetEnvCount == 0) {
             DEBUGOUTPUT(std::cout << "Reset by count" << std::endl);
             reinitEnv();
+            NumLoop++;
         } else if (g_setup->m_node.chainman->ActiveTip()->GetBlockHash() != tipHash) {
             DEBUGOUTPUT(std::cout << "Reset by wrong tip" << std::endl);
             reinitEnv();
         }
-        NumLoop++;
         Assert(g_setup->m_node.chainman->ActiveTip()->GetBlockHash() == tipHash);
     }
 
     ~Cleanup() {
-        // cleanup mempool
-        CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
-        Assert(mempool);
-        while (mempool->size() > 0) {
-            const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
-            mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
-        }
-        Assert(!g_setup->m_interrupt);
+        if (!forceClean || !durtyEnv) {
+            // cleanup mempool
+            CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
+            Assert(mempool);
+            while (mempool->size() > 0) {
+                const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
+                mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
+            }
+            Assert(!g_setup->m_interrupt);
 
-        Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
-        while (active_chainstate.m_chain.Tip()->nHeight >= (int) listBlocks.size()) {
-            DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
-            ConnectTrace connectTrace;
-            BlockValidationState state;
-            bool disconnectSuccess = active_chainstate.DisconnectTip(state, &disconnectpool);
-            active_chainstate.MaybeUpdateMempoolForReorg(disconnectpool, false);
-            if (!disconnectSuccess) break;
+            Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
+            while (active_chainstate.m_chain.Tip()->nHeight >= (int) listBlocks.size()) {
+                DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
+                ConnectTrace connectTrace;
+                BlockValidationState state;
+                bool disconnectSuccess = active_chainstate.DisconnectTip(state, &disconnectpool);
+                active_chainstate.MaybeUpdateMempoolForReorg(disconnectpool, false);
+                if (!disconnectSuccess) break;
+            }
+        } else {
+            reinitEnv();
         }
     }
 };
@@ -447,6 +459,7 @@ static CBlockIndex* writeBlock(const CBlock& block) EXCLUSIVE_LOCKS_REQUIRED(::c
         Assert(!pos.IsNull());
         csm.ReceivedBlockTransactions(block, blockIndex, pos);
         csm.ActiveChainstate().ForceFlushStateToDisk();
+        durtyEnv = true;
     }
     return blockIndex;
 }
@@ -628,7 +641,7 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
         bool foundInvalid = false;
 
         if (!active_chainstate.ActivateBestChainStep(state, prevIndex, prevBlock, foundInvalid, connectTrace)) {
-            DEBUGOUTPUT(std::cout << "Step2 Fail" << std::endl);
+            DEBUGOUTPUT(std::cout << "Step2 Fail : " << state.GetRejectReason() << std::endl);
             return;
         }
         if (foundInvalid) {
@@ -679,7 +692,7 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
         bool foundInvalid = false;
 
         if (!active_chainstate.ActivateBestChainStep(state, prevIndex, prevBlock, foundInvalid, connectTrace)) {
-            DEBUGOUTPUT(std::cout << "Step4 Fail" << std::endl);
+            DEBUGOUTPUT(std::cout << "Step4 Fail : " << state.GetRejectReason() << std::endl);
             return;
         }
         if (foundInvalid) {
@@ -688,4 +701,120 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
         }
         DEBUGOUTPUT(std::cout << "Step4 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
     } while (active_chainstate.m_chain.Tip()->nHeight < prevIndex->nHeight);
+}
+
+FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
+
+    Cleanup cleanEnvAtExit {true};
+
+    // Initialize data provider
+    FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
+
+    Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
+    DEBUGOUTPUT(std::cout << "Begin with height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
+
+    // Step 1 : create few block for a first branch
+    BlockValidationState state;
+    std::vector<CTxIn> additionnalUTXO;
+    std::vector<std::shared_ptr<CBlock>> branch1;
+    branch1.reserve(5);
+    std::shared_ptr<const CBlock> prevBlock = listBlocks.back();
+    CBlockIndex* originTip = active_chainstate.m_chain.Tip();
+    const auto& consensus = g_setup->m_node.chainman->GetConsensus();
+
+    for (int i = 0; i < 3; i++) {
+        LOCK(::cs_main);
+        branch1.push_back(std::make_shared<CBlock>(ConsumeBlock(fuzzed_data_provider, *prevBlock, additionnalUTXO, true)));
+        prevBlock = branch1.back();
+        if (!CheckBlock(*prevBlock, state, consensus)) {
+            // do not test invalid block, as they will never be written on disk.
+            // If an invalid block is written, it may raise an error when trying to
+            // read it
+            DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
+            return;
+        }
+        DEBUGOUTPUT(std::cout << "Step1 generate valid block: " << prevBlock->GetHash() << std::endl);
+
+        if (fuzzed_data_provider.ConsumeBool()) {
+            break;
+        }
+    }
+    additionnalUTXO.clear();
+
+    // Step 2 : create few block for a second branch (longer than the first branch)
+    std::vector<std::shared_ptr<CBlock>> branch2;
+    branch2.reserve(5);
+    prevBlock = listBlocks.back();
+
+    for (int i = 0; i < 3; i++) {
+        LOCK(::cs_main);
+        branch2.push_back(std::make_shared<CBlock>(ConsumeBlock(fuzzed_data_provider, *prevBlock, additionnalUTXO, true)));
+        prevBlock = branch2.back();
+        if (!CheckBlock(*prevBlock, state, consensus)) {
+            // do not test invalid block, as they will never be written on disk.
+            // If an invalid block is written, it may raise an error when trying to
+            // read it
+            DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
+            return;
+        }
+        DEBUGOUTPUT(std::cout << "Step2 generate valid block: " << prevBlock->GetHash() << std::endl);
+
+        if (fuzzed_data_provider.ConsumeBool() && branch2.size() > branch1.size()) {
+            break;
+        }
+    }
+
+    // Step3: add first branch in the blockManager
+    CBlockIndex* prevIndex = originTip;
+
+    for (const auto& block: branch1) {
+        LOCK(::cs_main);
+        CBlockIndex* blockIndex = writeBlock(*block);
+        // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
+        if (blockIndex->pprev != prevIndex) {
+            DEBUGOUTPUT(std::cout << "Step3 block invalid (pprev) : " << block->GetHash() << std::endl);
+            return;
+        }
+        prevIndex = blockIndex;
+        prevBlock = block;
+    }
+
+    // Step4: switch to this branch
+    if (!active_chainstate.ActivateBestChain(state, prevBlock)) {
+        DEBUGOUTPUT(std::cout << "Step4 Fail : " << state.GetRejectReason() << std::endl);
+        return;
+    }
+
+    if (active_chainstate.m_chain.Tip() != prevIndex) {
+        DEBUGOUTPUT(std::cout << "Step4 Fail to switch to our new Tip : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
+        return;
+    }
+    DEBUGOUTPUT(std::cout << "Step4 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
+
+    // Step5: add first branch in the blockManager
+    prevIndex = originTip;
+
+    for (const auto& block: branch2) {
+        LOCK(::cs_main);
+        CBlockIndex* blockIndex = writeBlock(*block);
+        // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
+        if (blockIndex->pprev != prevIndex) {
+            DEBUGOUTPUT(std::cout << "Step5 block invalid (pprev) : " << block->GetHash() << std::endl);
+            return;
+        }
+        prevIndex = blockIndex;
+        prevBlock = block;
+    }
+
+    // Step6: switch to this branch
+    if (!active_chainstate.ActivateBestChain(state, prevBlock)) {
+        DEBUGOUTPUT(std::cout << "Step6 Fail : " << state.GetRejectReason() << std::endl);
+        return;
+    }
+
+    if (active_chainstate.m_chain.Tip() != prevIndex) {
+        DEBUGOUTPUT(std::cout << "Step6 Fail to switch to our new Tip" << std::endl);
+        return;
+    }
+    DEBUGOUTPUT(std::cout << "Step6 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
 }
