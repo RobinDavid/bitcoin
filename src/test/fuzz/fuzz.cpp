@@ -231,16 +231,22 @@ int main(int argc, char** argv)
 #ifdef __AFL_LOOP
 #ifdef FUZZING_WITHOUT_PERSISTENT
     __AFL_INIT();
-    std::vector<uint8_t> buffer;
-    if (argc <= 1) {
+    if (__afl_sharedmem_fuzzing) {
+        const uint8_t* buffer = __AFL_FUZZ_TESTCASE_BUF;
+        size_t buffer_len = __AFL_FUZZ_TESTCASE_LEN;
+        test_one_input({buffer, buffer_len});
+    } else if (argc <= 1) {
+        std::vector<uint8_t> buffer;
         Assert(read_stdin(buffer));
+        test_one_input(buffer);
     } else if (argc == 2) {
+        std::vector<uint8_t> buffer;
         fs::path input_path(argv[1]);
         Assert(read_file(input_path, buffer));
+        test_one_input(buffer);
     } else {
         return 1;
     }
-    test_one_input(buffer);
     return 0;
 #else
     // Enable AFL persistent mode. Requires compilation using afl-clang-fast++.
