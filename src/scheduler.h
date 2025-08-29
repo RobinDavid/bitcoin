@@ -90,6 +90,12 @@ public:
         if (m_service_thread.joinable()) m_service_thread.join();
     }
 
+    void clearStop() EXCLUSIVE_LOCKS_REQUIRED(!newTaskMutex)
+    {
+        WITH_LOCK(newTaskMutex, stopWhenEmpty = false);
+        WITH_LOCK(newTaskMutex, stopRequested = false);
+    }
+
     /**
      * Returns number of tasks waiting to be serviced,
      * and first and last task times

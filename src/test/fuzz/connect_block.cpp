@@ -249,6 +249,7 @@ static void initialize_connect_block() {
     */
 #ifdef FUZZING_WITHOUT_PERSISTENT
     g_setup->m_node.scheduler->stop();
+    g_setup->m_node.scheduler->clearStop();
 #endif
 }
 

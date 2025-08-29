@@ -180,7 +180,7 @@ static bool read_stdin(std::vector<uint8_t>& data)
 }
 #endif
 
-#if defined(PROVIDE_FUZZ_MAIN_FUNCTION) && !defined(__AFL_LOOP)
+#if defined(PROVIDE_FUZZ_MAIN_FUNCTION) && !(defined(__AFL_LOOP) && !defined(FUZZING_WITHOUT_PERSISTENT))
 static bool read_file(fs::path p, std::vector<uint8_t>& data)
 {
     uint8_t buffer[1024];
@@ -232,8 +232,13 @@ int main(int argc, char** argv)
 #ifdef FUZZING_WITHOUT_PERSISTENT
     __AFL_INIT();
     std::vector<uint8_t> buffer;
-    if (!read_stdin(buffer)) {
-        return 0;
+    if (argc <= 1) {
+        Assert(read_stdin(buffer));
+    } else if (argc == 2) {
+        fs::path input_path(argv[1]);
+        Assert(read_file(input_path, buffer));
+    } else {
+        return 1;
     }
     test_one_input(buffer);
     return 0;
