@@ -172,6 +172,7 @@ option(BUILD_BENCH "Build bench_bitcoin executable." OFF)
 option(BUILD_FUZZ_BINARY "Build fuzz binary." OFF)
 option(BUILD_FOR_FUZZING "Build for fuzzing. Enabling this will disable all other targets and override BUILD_FUZZ_BINARY." OFF)
 
+option(FUZZING_WITHOUT_PERSISTENT "Build fuzz binary." OFF)
 option(INSTALL_MAN "Install man pages." ON)
 
 set(APPEND_CPPFLAGS "" CACHE STRING "Preprocessor flags that are appended to the command line after all other flags added by the build system. This variable is intended for debugging and special builds.")
@@ -219,6 +220,11 @@ if(BUILD_FOR_FUZZING)
 
   target_compile_definitions(core_interface INTERFACE
     FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  )
+endif()
+if (FUZZING_WITHOUT_PERSISTENT)
+  target_compile_definitions(core_interface INTERFACE
+    FUZZING_WITHOUT_PERSISTENT
   )
 endif()
 

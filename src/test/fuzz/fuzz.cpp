@@ -229,6 +229,15 @@ int main(int argc, char** argv)
 {
     initialize();
 #ifdef __AFL_LOOP
+#ifdef FUZZING_WITHOUT_PERSISTENT
+    __AFL_INIT();
+    std::vector<uint8_t> buffer;
+    if (!read_stdin(buffer)) {
+        return 0;
+    }
+    test_one_input(buffer);
+    return 0;
+#else
     // Enable AFL persistent mode. Requires compilation using afl-clang-fast++.
     // See fuzzing.md for details.
     const uint8_t* buffer = __AFL_FUZZ_TESTCASE_BUF;
@@ -236,6 +245,7 @@ int main(int argc, char** argv)
         size_t buffer_len = __AFL_FUZZ_TESTCASE_LEN;
         test_one_input({buffer, buffer_len});
     }
+#endif
 #else
     std::vector<uint8_t> buffer;
     if (argc <= 1) {

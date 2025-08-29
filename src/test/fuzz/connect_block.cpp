@@ -9,11 +9,14 @@
 //#include <core_io.h>
 //#include <core_memusage.h>
 //#include <primitives/block.h>
+#include <future>
 #include <kernel/disconnected_transactions.h>
 #include <node/kernel_notifications.h>
 #include <pow.h>
 //#include <pubkey.h>
 //#include <streams.h>
+#include <scheduler.h>
+#include <util/thread.h>
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
@@ -158,7 +161,7 @@ static void initialize_connect_block() {
     // Prepare transaction for the 201 blocks. This blocks will includes
     // transaction from the first block coinbase tx.
     Assert(Assert(Assert(g_setup->m_node.chainman)->ActiveChainstate().GetMempool())->size() == 0);
-    for (unsigned i = 1; i < 11; i++) {
+    for (unsigned i = 1; i < 31; i++) {
         CMutableTransaction ctx;
         ctx.version = CTransaction::CURRENT_VERSION;
         ctx.vin.resize(1);
@@ -244,18 +247,26 @@ static void initialize_connect_block() {
     [* Hardcoded les clés publics pour dépenser les coins]
 
     */
+#ifdef FUZZING_WITHOUT_PERSISTENT
+    g_setup->m_node.scheduler->stop();
+#endif
 }
 
 CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider,
-                                   std::vector<CTxIn>& additionnalUTXO, bool coinbase=false) {
+                                   std::vector<CTxIn>& additionnalUTXO, bool coinbase=false,
+                                   unsigned targetHeight=0) {
 
     CMutableTransaction tx;
     if (coinbase) {
         tx.vin.resize(1);
         tx.vin[0].prevout.SetNull();
         tx.vin[0].nSequence = CTxIn::MAX_SEQUENCE_NONFINAL; // Make sure timelock is enforced.
-        auto scriptSig = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
-        tx.vin[0].scriptSig = CScript(scriptSig.begin(), scriptSig.end());
+        if (fuzzed_data_provider.ConsumeBool()) {
+            tx.vin[0].scriptSig = CScript() << targetHeight << OP_0;
+        } else {
+            auto scriptSig = ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100);
+            tx.vin[0].scriptSig = CScript(scriptSig.begin(), scriptSig.end());
+        }
     } else {
         int numInput = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
         tx.vin.resize(numInput);
@@ -282,7 +293,8 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider,
             }
             if (fuzzed_data_provider.ConsumeBool()) {
                 tx.vin[i].scriptWitness.stack.clear();
-                for (int j = 0; j < fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10); j++) {
+                int numWit = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 10);
+                for (int j = 0; j < numWit; j++) {
                     tx.vin[i].scriptWitness.stack.push_back(ConsumeRandomLengthByteVector<unsigned char>(fuzzed_data_provider, 100));
                 }
             }
@@ -321,15 +333,17 @@ CTransactionRef ConsumeTransaction(FuzzedDataProvider& fuzzed_data_provider,
 
     auto res = MakeTransactionRef(tx);
 
-    // do it now, when the hash of the transaction will not change anymore
-    for (int i = 0; i < numOutput; i++) {
-        additionnalUTXO.emplace_back(getResolvUTXO(*res, i));
+    if (!coinbase) {
+        // do it now, when the hash of the transaction will not change anymore
+        for (int i = 0; i < numOutput; i++) {
+            additionnalUTXO.emplace_back(getResolvUTXO(*res, i));
+        }
     }
 
     return res;
 }
 
-CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, const CBlock& prevBlock,
+CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, const CBlock& prevBlock, unsigned targetHeight,
                     std::vector<CTxIn>& additionnalUTXO, bool forceValidBlock=false) {
     CBlock block;
 
@@ -347,18 +361,30 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, const CBlock& prev
     if (fuzzed_data_provider.ConsumeBool()) {
         block.nBits = listBlocks.back()->nBits;
     }
+    if (fuzzed_data_provider.ConsumeBool()) {
+        block.nTime = listBlocks.back()->nTime + 2;
+    }
     if (fuzzed_data_provider.ConsumeBool() || forceValidBlock) {
         block.hashPrevBlock = prevBlock.GetHash();
     }
     bool adjustNonce = fuzzed_data_provider.ConsumeBool() | forceValidBlock;
     bool adjustMerkle = fuzzed_data_provider.ConsumeBool() | forceValidBlock;
 
-    block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider, additionnalUTXO, true));
+    block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider, additionnalUTXO, true, targetHeight));
 
     int numTx = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 5);
     for (int i = 0; i < numTx; i++) {
         block.vtx.push_back(ConsumeTransaction(fuzzed_data_provider, additionnalUTXO));
     }
+
+    // commit Witness
+    if (numTx > 0) {
+        g_setup->m_node.chainman->GenerateCoinbaseCommitment(block, nullptr);
+    }
+    for (unsigned i = 0; i < block.vtx[0]->vout.size(); i++) {
+        additionnalUTXO.emplace_back(getResolvUTXO(*block.vtx[0], i));
+    }
+
 
     if (adjustMerkle) {
         block.hashMerkleRoot = BlockMerkleRoot(block);
@@ -376,11 +402,11 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, const CBlock& prev
     return block;
 }
 
-static unsigned NumLoop = 0;
-static constexpr unsigned ResetEnvCount = 50000;
+[[maybe_unused]] static unsigned NumLoop = 0;
+[[maybe_unused]] static constexpr unsigned ResetEnvCount = 50000;
 static bool durtyEnv = false;
 
-void reinitEnv() {
+[[maybe_unused]] void reinitEnv() {
     g_setup->m_node.chainman.reset();
     Assert(fsbridge::clearMemFS());
     g_setup->m_make_chainman();
@@ -396,13 +422,23 @@ void reinitEnv() {
 class Cleanup {
 
     uint256 tipHash;
-    bool forceClean;
+    [[maybe_unused]] bool forceClean;
 public:
     Cleanup(bool forceClean_=false) : forceClean(forceClean_) {
         SeedRandomStateForTest(SeedRand::ZEROS);
         SetMockTime(listBlocks.back()->GetBlockTime() + 2);
         tipHash = listBlocks.back()->GetHash();
 
+#ifdef FUZZING_WITHOUT_PERSISTENT
+        Assert(!durtyEnv);
+        g_setup->m_node.scheduler->m_service_thread = std::thread(util::TraceThread, "scheduler", [&] { g_setup->m_node.scheduler->serviceQueue(); });
+        {
+            // Ensure deterministic coverage by waiting for m_service_thread to be running
+            std::promise<void> promise;
+            g_setup->m_node.scheduler->scheduleFromNow([&promise] { promise.set_value(); }, 0ms);
+            promise.get_future().wait();
+        }
+#else
         if (forceClean) {
             if (durtyEnv) {
                 reinitEnv();
@@ -416,20 +452,22 @@ public:
             DEBUGOUTPUT(std::cout << "Reset by wrong tip" << std::endl);
             reinitEnv();
         }
+#endif
         Assert(g_setup->m_node.chainman->ActiveTip()->GetBlockHash() == tipHash);
     }
 
     ~Cleanup() {
-        if (!forceClean || !durtyEnv) {
-            // cleanup mempool
-            CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
-            Assert(mempool);
-            while (mempool->size() > 0) {
-                const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
-                mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
-            }
-            Assert(!g_setup->m_interrupt);
+#ifndef FUZZING_WITHOUT_PERSISTENT
+        // cleanup mempool
+        CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
+        Assert(mempool);
+        while (mempool->size() > 0) {
+            const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
+            mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
+        }
+        Assert(!g_setup->m_interrupt);
 
+        if (!forceClean || !durtyEnv) {
             Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
             while (active_chainstate.m_chain.Tip()->nHeight >= (int) listBlocks.size()) {
                 DisconnectedBlockTransactions disconnectpool{MAX_DISCONNECTED_TX_POOL_BYTES};
@@ -442,6 +480,7 @@ public:
         } else {
             reinitEnv();
         }
+#endif
     }
 };
 
@@ -451,14 +490,20 @@ static CBlockIndex* writeBlock(const CBlock& block) EXCLUSIVE_LOCKS_REQUIRED(::c
     // if the hash already exists, this means that we got the same block before.
     // Don't at it a second time.
     if (blockIndex == nullptr) {
-        CBlockIndex* bestBlock = nullptr;
-        blockIndex = csm.m_blockman.AddToBlockIndex(block, bestBlock);
-        Assert(bestBlock == blockIndex);
+        BlockValidationState state;
+        //CBlockIndex* bestBlock = nullptr;
+        //blockIndex = csm.m_blockman.AddToBlockIndex(block, bestBlock);
+        //Assert(bestBlock == blockIndex);
 
-        FlatFilePos pos = csm.m_blockman.WriteBlock(block, blockIndex->nHeight);
-        Assert(!pos.IsNull());
-        csm.ReceivedBlockTransactions(block, blockIndex, pos);
-        csm.ActiveChainstate().ForceFlushStateToDisk();
+        //FlatFilePos pos = csm.m_blockman.WriteBlock(block, blockIndex->nHeight);
+        //Assert(!pos.IsNull());
+        //csm.ReceivedBlockTransactions(block, blockIndex, pos);
+        //csm.ActiveChainstate().ForceFlushStateToDisk();
+        bool isNewBlock = false;
+        if (!csm.AcceptBlock(std::make_shared<CBlock>(block), state, &blockIndex, true, nullptr, &isNewBlock, true)) {
+            DEBUGOUTPUT(std::cout << "Fail to writeBlock : State: " << state.ToString() << std::endl);
+            return nullptr;
+        }
         durtyEnv = true;
     }
     return blockIndex;
@@ -482,7 +527,7 @@ FUZZ_TARGET(connect_block, .init = initialize_connect_block)
 
     // Read new block
     std::vector<CTxIn> additionnalUTXO;
-    CBlock block = ConsumeBlock(fuzzed_data_provider, *listBlocks.back(), additionnalUTXO);
+    CBlock block = ConsumeBlock(fuzzed_data_provider, *listBlocks.back(), active_tip->nHeight + 1, additionnalUTXO);
     CBlockHeader curr_header = block.GetBlockHeader();
 
     BlockValidationState state;
@@ -529,28 +574,19 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
 
     // Initialize data provider
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
+    Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
 
     // Read new block
     std::vector<CTxIn> additionnalUTXO;
-    CBlock block = ConsumeBlock(fuzzed_data_provider, *listBlocks.back(), additionnalUTXO);
+    CBlock block = ConsumeBlock(fuzzed_data_provider, *listBlocks.back(),
+              active_chainstate.m_chain.Tip()->nHeight + 1, additionnalUTXO);
 
-    Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
     DEBUGOUTPUT(std::cout << "Current Height: " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
-
-    BlockValidationState state;
-    const auto& consensus = g_setup->m_node.chainman->GetConsensus();
-    if (!CheckBlock(block, state, consensus)) {
-        // do not test invalid block, as they will never be written on disk.
-        // If an invalid block is written, it may raise an error when trying to
-        // read it
-        DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
-        return;
-    }
-
     DEBUGOUTPUT(std::cout << "Block generated : " << std::endl);
     DEBUGOUTPUT(std::cout << block.ToString() << std::endl);
 
     CBlockIndex* blockIndex = writeBlock(block);
+    if (!blockIndex) return;
     // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
     if (blockIndex->pprev != active_chainstate.m_chain.Tip()) {
         return;
@@ -561,6 +597,7 @@ FUZZ_TARGET(connect_tip, .init = initialize_connect_block)
 
     {
         LOCK(active_chainstate.MempoolMutex());
+        BlockValidationState state;
         bool success = active_chainstate.ConnectTip(state, blockIndex, nullptr, connectTrace, disconnectpool);
         if (success) {
             DEBUGOUTPUT(std::cout << "Tip connected successfully: " << block.GetHash().ToString() << std::endl);
@@ -603,19 +640,11 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
     std::shared_ptr<const CBlock> prevBlock = listBlocks.back();
     CBlockIndex* originTip = active_chainstate.m_chain.Tip();
     CBlockIndex* prevIndex = originTip;
-    const auto& consensus = g_setup->m_node.chainman->GetConsensus();
 
     for (int i = 0; i < 3; i++) {
-        CBlock block = ConsumeBlock(fuzzed_data_provider, *prevBlock, additionnalUTXO, true);
-        BlockValidationState state;
-        if (!CheckBlock(block, state, consensus)) {
-            // do not test invalid block, as they will never be written on disk.
-            // If an invalid block is written, it may raise an error when trying to
-            // read it
-            DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
-            return;
-        }
+        CBlock block = ConsumeBlock(fuzzed_data_provider, *prevBlock, originTip->nHeight + 1 + i, additionnalUTXO, true);
         CBlockIndex* blockIndex = writeBlock(block);
+        if (!blockIndex) return;
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
             DEBUGOUTPUT(std::cout << "Block invalid (pprev)" << std::endl);
@@ -657,16 +686,9 @@ FUZZ_TARGET(activate_best_chain_step, .init = initialize_connect_block) {
     prevIndex = originTip;
 
     for (int i = 0; i < 5; i++) {
-        CBlock block = ConsumeBlock(fuzzed_data_provider, *prevBlock, additionnalUTXO, true);
-        BlockValidationState state;
-        if (!CheckBlock(block, state, consensus)) {
-            // do not test invalid block, as they will never be written on disk.
-            // If an invalid block is written, it may raise an error when trying to
-            // read it
-            DEBUGOUTPUT(std::cout << "Block invalid: " << state.GetRejectReason() << std::endl);
-            return;
-        }
+        CBlock block = ConsumeBlock(fuzzed_data_provider, *prevBlock, originTip->nHeight + 1 + i, additionnalUTXO, true);
         CBlockIndex* blockIndex = writeBlock(block);
+        if (!blockIndex) return;
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
             DEBUGOUTPUT(std::cout << "Block invalid (pprev)" << std::endl);
@@ -717,16 +739,23 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
     BlockValidationState state;
     std::vector<CTxIn> additionnalUTXO;
     std::vector<std::shared_ptr<CBlock>> branch1;
-    branch1.reserve(5);
+    std::vector<std::unique_ptr<CBlockIndex>> tmpIndex;
+
     std::shared_ptr<const CBlock> prevBlock = listBlocks.back();
     CBlockIndex* originTip = active_chainstate.m_chain.Tip();
+    CBlockIndex* prevIndex = originTip;
     const auto& consensus = g_setup->m_node.chainman->GetConsensus();
+    ChainstateManager& csm = *g_setup->m_node.chainman;
 
     for (int i = 0; i < 3; i++) {
         LOCK(::cs_main);
-        branch1.push_back(std::make_shared<CBlock>(ConsumeBlock(fuzzed_data_provider, *prevBlock, additionnalUTXO, true)));
+        branch1.push_back(std::make_shared<CBlock>(ConsumeBlock(fuzzed_data_provider, *prevBlock,
+                originTip->nHeight + 1 + i, additionnalUTXO, true)));
         prevBlock = branch1.back();
-        if (!CheckBlock(*prevBlock, state, consensus)) {
+        printBlock(*prevBlock);
+        if (!ContextualCheckBlockHeader(*prevBlock, state, csm.m_blockman, csm, prevIndex) ||
+            !CheckBlock(*prevBlock, state, consensus) ||
+            !ContextualCheckBlock(*prevBlock, state, csm, prevIndex)) {
             // do not test invalid block, as they will never be written on disk.
             // If an invalid block is written, it may raise an error when trying to
             // read it
@@ -734,6 +763,10 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
             return;
         }
         DEBUGOUTPUT(std::cout << "Step1 generate valid block: " << prevBlock->GetHash() << std::endl);
+        tmpIndex.emplace_back(std::make_unique<CBlockIndex>(*prevBlock));
+        tmpIndex.back()->nHeight = prevIndex->nHeight + 1;
+        tmpIndex.back()->pprev = prevIndex;
+        prevIndex = tmpIndex.back().get();
 
         if (fuzzed_data_provider.ConsumeBool()) {
             break;
@@ -743,14 +776,19 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
 
     // Step 2 : create few block for a second branch (longer than the first branch)
     std::vector<std::shared_ptr<CBlock>> branch2;
-    branch2.reserve(5);
+    tmpIndex.clear();
     prevBlock = listBlocks.back();
+    prevIndex = originTip;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 5; i++) {
         LOCK(::cs_main);
-        branch2.push_back(std::make_shared<CBlock>(ConsumeBlock(fuzzed_data_provider, *prevBlock, additionnalUTXO, true)));
+        branch2.push_back(std::make_shared<CBlock>(ConsumeBlock(fuzzed_data_provider, *prevBlock,
+                originTip->nHeight + 1 + i, additionnalUTXO, true)));
         prevBlock = branch2.back();
-        if (!CheckBlock(*prevBlock, state, consensus)) {
+        printBlock(*prevBlock);
+        if (!ContextualCheckBlockHeader(*prevBlock, state, csm.m_blockman, csm, prevIndex) ||
+            !CheckBlock(*prevBlock, state, consensus) ||
+            !ContextualCheckBlock(*prevBlock, state, csm, prevIndex)) {
             // do not test invalid block, as they will never be written on disk.
             // If an invalid block is written, it may raise an error when trying to
             // read it
@@ -758,6 +796,10 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
             return;
         }
         DEBUGOUTPUT(std::cout << "Step2 generate valid block: " << prevBlock->GetHash() << std::endl);
+        tmpIndex.emplace_back(std::make_unique<CBlockIndex>(*prevBlock));
+        tmpIndex.back()->nHeight = prevIndex->nHeight + 1;
+        tmpIndex.back()->pprev = prevIndex;
+        prevIndex = tmpIndex.back().get();
 
         if (fuzzed_data_provider.ConsumeBool() && branch2.size() > branch1.size()) {
             break;
@@ -765,11 +807,12 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
     }
 
     // Step3: add first branch in the blockManager
-    CBlockIndex* prevIndex = originTip;
+    prevIndex = originTip;
 
     for (const auto& block: branch1) {
         LOCK(::cs_main);
         CBlockIndex* blockIndex = writeBlock(*block);
+        if (!blockIndex) return;
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
             DEBUGOUTPUT(std::cout << "Step3 block invalid (pprev) : " << block->GetHash() << std::endl);
@@ -787,9 +830,9 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
 
     if (active_chainstate.m_chain.Tip() != prevIndex) {
         DEBUGOUTPUT(std::cout << "Step4 Fail to switch to our new Tip : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
-        return;
+    } else {
+        DEBUGOUTPUT(std::cout << "Step4 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
     }
-    DEBUGOUTPUT(std::cout << "Step4 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
 
     // Step5: add first branch in the blockManager
     prevIndex = originTip;
@@ -797,6 +840,7 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
     for (const auto& block: branch2) {
         LOCK(::cs_main);
         CBlockIndex* blockIndex = writeBlock(*block);
+        if (!blockIndex) return;
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
             DEBUGOUTPUT(std::cout << "Step5 block invalid (pprev) : " << block->GetHash() << std::endl);
@@ -814,7 +858,7 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
 
     if (active_chainstate.m_chain.Tip() != prevIndex) {
         DEBUGOUTPUT(std::cout << "Step6 Fail to switch to our new Tip" << std::endl);
-        return;
+    } else {
+        DEBUGOUTPUT(std::cout << "Step6 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
     }
-    DEBUGOUTPUT(std::cout << "Step6 Success : " << active_chainstate.m_chain.Tip()->nHeight << std::endl);
 }
