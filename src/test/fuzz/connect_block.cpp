@@ -134,6 +134,7 @@ static void loadCurrentChain() {
 
 static void initialize_connect_block() {
     fsbridge::setEnableMemFS(true);
+    Assert(EnableFuzzDeterminism());
 
     // Create btc structure
     static auto testing_setup = MakeNoLogFileContext<TestingSetup>(
@@ -432,13 +433,13 @@ public:
 
 #ifdef FUZZING_WITHOUT_PERSISTENT
         Assert(!durtyEnv);
-        g_setup->m_node.scheduler->m_service_thread = std::thread(util::TraceThread, "scheduler", [&] { g_setup->m_node.scheduler->serviceQueue(); });
-        {
-            // Ensure deterministic coverage by waiting for m_service_thread to be running
-            std::promise<void> promise;
-            g_setup->m_node.scheduler->scheduleFromNow([&promise] { promise.set_value(); }, 0ms);
-            promise.get_future().wait();
-        }
+        //g_setup->m_node.scheduler->m_service_thread = std::thread(util::TraceThread, "scheduler", [&] { g_setup->m_node.scheduler->serviceQueue(); });
+        //{
+        //    // Ensure deterministic coverage by waiting for m_service_thread to be running
+        //    std::promise<void> promise;
+        //    g_setup->m_node.scheduler->scheduleFromNow([&promise] { promise.set_value(); }, 0ms);
+        //    promise.get_future().wait();
+        //}
 #else
         if (forceClean) {
             if (durtyEnv) {
