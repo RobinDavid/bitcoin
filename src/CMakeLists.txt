@@ -476,3 +476,7 @@ endif()
 if(BUILD_FUZZ_BINARY)
   add_subdirectory(test/fuzz)
 endif()
+
+if(BUILD_FUZZ_PROTO_BINARY)
+  add_subdirectory(test/fuzz/proto)
+endif()
