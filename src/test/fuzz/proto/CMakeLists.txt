@@ -6,7 +6,15 @@ find_package(protobuf REQUIRED)
 find_package(libprotobuf-mutator REQUIRED)
 
 add_executable(fuzzproto
+  addition_overflow.cpp
+  addition_overflow.proto
   fuzz_proto.cpp
+)
+
+protobuf_generate(
+  TARGET fuzzproto
+  LANGUAGE cpp
+  IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 target_link_libraries(fuzzproto
@@ -25,4 +33,5 @@ target_link_libraries(fuzzproto
   libevent::extra
   protobuf::libprotobuf
   libprotobuf-mutator::protobuf-mutator
+  libprotobuf-mutator::protobuf-mutator-libfuzzer
 )

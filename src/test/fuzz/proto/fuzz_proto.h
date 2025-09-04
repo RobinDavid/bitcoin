@@ -27,7 +27,6 @@ struct FuzzProtoTargetOptions {
     bool hidden{false};
 };
 
-
 void FuzzProtoFrameworkRegisterTarget(std::string_view name,
     TypeProtoTestOneInput testOneInput,
     TypeProtoCustomProtoMutator mutator,
@@ -62,25 +61,31 @@ void FuzzProtoFrameworkRegisterTarget(std::string_view name,
                                 max_out_size, seed, &input1, &input2);        \
   }
 
-#define DETAIL_FUZZ_PROTO(use_binary, name, Proto, ...)                               \
-    static void name##_fuzz_proto_target(proto);                                      \
-    FUZZ_PROTO_TEST_ONE_PROTO_INPUT_IMPL(use_binary, name, Proto)                     \
-    FUZZ_PROTO_CUSTOM_PROTO_MUTATOR_IMPL(use_binary, name, Proto)                     \
-    FUZZ_PROTO_CUSTOM_PROTO_CROSSOVER_IMPL(use_binary, name, Proto)                   \
-    struct name##_proto_Before_Main {                                                 \
-        name##_proto_Before_Main()                                                    \
-        {                                                                             \
-            FuzzProtoFrameworkRegisterTarget(#name,                                   \
-                name##_proto_Test_One_Input,                                          \
-                name##_Custom_Mutator,                                                \
-                name##_Custom_CrossOver,                                              \
-                {__VA_ARGS__});                                                       \
-        }                                                                             \
-    } const static g_##name##_proto_before_main;                                      \
-    static void name##_proto_fuzz_target(Proto& target)
+#define DETAIL_FUZZ_PROTO(use_binary, name, arg, ...)                                  \
+    static void name##_fuzz_proto_target(arg);                                         \
+    using name##_fuzz_proto_type =                                                     \
+        protobuf_mutator::libfuzzer::macro_internal::GetFirstParam<                    \
+            decltype(&name##_fuzz_proto_target)>::type;                                \
+    FUZZ_PROTO_TEST_ONE_PROTO_INPUT_IMPL(use_binary, name, name##_fuzz_proto_type)     \
+    FUZZ_PROTO_CUSTOM_PROTO_MUTATOR_IMPL(use_binary, name, name##_fuzz_proto_type)     \
+    FUZZ_PROTO_CUSTOM_PROTO_CROSSOVER_IMPL(use_binary, name, name##_fuzz_proto_type)   \
+    struct name##_proto_Before_Main {                                                  \
+        name##_proto_Before_Main()                                                     \
+        {                                                                              \
+            FuzzProtoFrameworkRegisterTarget(#name,                                    \
+                name##_proto_Test_One_Input,                                           \
+                name##_Custom_Mutator,                                                 \
+                name##_Custom_CrossOver,                                               \
+                {__VA_ARGS__});                                                        \
+        }                                                                              \
+    } const static g_##name##_proto_before_main;                                       \
+    static void name##_fuzz_proto_target(arg)
 
 #define FUZZ_PROTO_TARGET(...) DETAIL_FUZZ_PROTO(true, __VA_ARGS__)
 #define FUZZ_PROTO_TEXT_TARGET(...) DETAIL_FUZZ_PROTO(false, __VA_ARGS__)
 
+//template <class Proto>
+//using PostProcessor =
+//    protobuf_mutator::libfuzzer::PostProcessorRegistration<Proto>;
 
 #endif // BITCOIN_TEST_FUZZ_PROTO_FUZZ_PROTO_H
