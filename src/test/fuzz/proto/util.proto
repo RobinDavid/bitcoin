@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package proto_fuzz_util;
+
+message uint256 {
+  bytes value = 1;
+}
+

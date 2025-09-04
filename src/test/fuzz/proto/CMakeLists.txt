@@ -8,7 +8,11 @@ find_package(libprotobuf-mutator REQUIRED)
 add_executable(fuzzproto
   addition_overflow.cpp
   addition_overflow.proto
+  connect_block.cpp
+  connect_block.proto
   fuzz_proto.cpp
+  util.cpp
+  util.proto
 )
 
 protobuf_generate(

@@ -155,17 +155,6 @@ static void initialize()
     it->second.opts.init();
 
     ResetCoverageCounters();
-
-    if (std::getenv("WRITE_ALL_FUZZ_TARGETS_AND_ABORT")) {
-        // needed to include G_TRANSLATION_FUN until first testcase
-        auto testing_setup = MakeNoLogFileContext<TestingSetup>(
-            /*chain_type=*/ChainType::REGTEST, TestOpts{
-                .extra_args = {
-                    "-minrelaytxfee=0",
-                    "-acceptnonstdtxn",
-                },
-            });
-    }
 }
 
 #if defined(PROVIDE_FUZZ_MAIN_FUNCTION)
@@ -209,11 +198,59 @@ void signal_handler(int signal)
 }
 #endif
 
+extern std::atomic<bool> g_used_system_time;
+
+struct CheckGlobals {
+    CheckGlobals()
+    {
+        g_used_g_prng = false;
+        g_seeded_g_prng_zero = false;
+        g_used_system_time = false;
+        SetMockTime(0s);
+    }
+    ~CheckGlobals()
+    {
+        if (g_used_g_prng && !g_seeded_g_prng_zero) {
+            std::cerr << "\n\n"
+                         "The current fuzz target used the global random state.\n\n"
+
+                         "This is acceptable, but requires the fuzz target to call \n"
+                         "SeedRandomStateForTest(SeedRand::ZEROS) in the first line \n"
+                         "of the FUZZ_TARGET function.\n\n"
+
+                         "An alternative solution would be to avoid any use of globals.\n\n"
+
+                         "Without a solution, fuzz instability and non-determinism can lead \n"
+                         "to non-reproducible bugs or inefficient fuzzing.\n\n"
+                      << std::endl;
+            std::abort(); // Abort, because AFL may try to recover from a std::exit
+        }
+
+        if (g_used_system_time) {
+            std::cerr << "\n\n"
+                         "The current fuzz target accessed system time.\n\n"
+
+                         "This is acceptable, but requires the fuzz target to call \n"
+                         "SetMockTime() at the beginning of processing the fuzz input.\n\n"
+
+                         "Without setting mock time, time-dependent behavior can lead \n"
+                         "to non-reproducible bugs or inefficient fuzzing.\n\n"
+                      << std::endl;
+            std::abort();
+        }
+    }
+};
+
+static void test_one_input(const uint8_t* data, size_t size)
+{
+    CheckGlobals check{};
+    Assert(g_fuzz_target_info)->testOneInput(data, size);
+}
+
 // This function is used by libFuzzer
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    Assert(g_fuzz_target_info != nullptr);
-    g_fuzz_target_info->testOneInput(data, size);
+    test_one_input(data, size);
     return 0;
 }
 
@@ -253,16 +290,16 @@ int main(int argc, char** argv)
     if (__afl_sharedmem_fuzzing) {
         const uint8_t* buffer = __AFL_FUZZ_TESTCASE_BUF;
         size_t buffer_len = __AFL_FUZZ_TESTCASE_LEN;
-        g_fuzz_target_info->testOneInput(buffer, buffer_len);
+        test_one_input(buffer, buffer_len);
     } else if (argc <= 1) {
         std::vector<uint8_t> buffer;
         Assert(read_stdin(buffer));
-        g_fuzz_target_info->testOneInput(buffer.data(), buffer.size());
+        test_one_input(buffer.data(), buffer.size());
     } else if (argc == 2) {
         std::vector<uint8_t> buffer;
         fs::path input_path(argv[1]);
         Assert(read_file(input_path, buffer));
-        g_fuzz_target_info->testOneInput(buffer.data(), buffer.size());
+        test_one_input(buffer.data(), buffer.size());
     } else {
         return 1;
     }
@@ -273,7 +310,7 @@ int main(int argc, char** argv)
     const uint8_t* buffer = __AFL_FUZZ_TESTCASE_BUF;
     while (__AFL_LOOP(100000)) {
         size_t buffer_len = __AFL_FUZZ_TESTCASE_LEN;
-        g_fuzz_target_info->testOneInput(buffer, buffer_len);
+        test_one_input(buffer, buffer_len);
     }
 #endif
 #else
@@ -282,7 +319,7 @@ int main(int argc, char** argv)
         if (!read_stdin(buffer)) {
             return 0;
         }
-        g_fuzz_target_info->testOneInput(buffer.data(), buffer.size());
+        test_one_input(buffer.data(), buffer.size());
         return 0;
     }
     std::signal(SIGABRT, signal_handler);
@@ -300,14 +337,14 @@ int main(int argc, char** argv)
             for (const auto& input_path : files) {
                 g_input_path = input_path;
                 Assert(read_file(input_path, buffer));
-                g_fuzz_target_info->testOneInput(buffer.data(), buffer.size());
+                test_one_input(buffer.data(), buffer.size());
                 ++tested;
                 buffer.clear();
             }
         } else {
             g_input_path = input_path;
             Assert(read_file(input_path, buffer));
-            g_fuzz_target_info->testOneInput(buffer.data(), buffer.size());
+            test_one_input(buffer.data(), buffer.size());
             ++tested;
             buffer.clear();
         }

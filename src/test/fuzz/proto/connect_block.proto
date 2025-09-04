@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+import "util.proto";
+
+package connect_block_fuzz;
+
+message TxIn {
+  // UTXO that is used as a based for this Txin
+  oneof base_oneof {
+    uint32 baseUTXO = 1;
+    uint32 branchUTXO = 2;
+  }
+
+  uint32 nSequence = 3;
+  uint32 prevN = 4;
+  proto_fuzz_util.uint256 prevHash = 5;
+  bytes scriptSig = 6;
+  repeated bytes scriptWitness = 7;
+
+  bool customSequence = 8;
+  bool customPrevN = 9;
+  bool customPrevHash = 10;
+  bool customScriptSig = 11;
+  bool customWitness = 12;
+}
+
+message TxOut {
+  enum BaseOutputScript {
+    BASEOUTPUTSCRIPT_UNSPECIFIED = 0;
+    BASEOUTPUTSCRIPT_P2WSH = 1;
+    BASEOUTPUTSCRIPT_P2SH = 2;
+    BASEOUTPUTSCRIPT_TAPSCRIPT = 3;
+    BASEOUTPUTSCRIPT_NOSCRIPT = 4;
+  }
+  int64 nValue = 1;
+  BaseOutputScript type = 2;
+  bytes scriptPubKey = 3;
+}
+
+message Transaction {
+  bool adjustCoinBase = 1;
+  repeated TxIn txIns = 2;
+  repeated TxOut txOuts = 3;
+}
+
+message Block {
+  int32 nversion = 1;
+  proto_fuzz_util.uint256 hashPrevBlock = 2;
+  proto_fuzz_util.uint256 hashMerkleRoot = 3;
+  uint32 nTime = 4;
+  uint32 nBits = 5;
+  uint32 nNonce = 6;
+
+  bool adjustVersion = 7;
+  bool adjustBits = 8;
+  bool adjustTime = 9;
+  bool adjustNonce = 10;
+  bool adjustPrevBlock = 11;
+  bool adjustMerkle = 12;
+  bool adjustCoinbaseWitness = 13;
+
+  Transaction coinbase = 14;
+  repeated Transaction txs = 15;
+}
+
+message ActivateBestChain {
+  repeated Block branch1 = 1;
+  repeated Block branch2 = 2;
+}
