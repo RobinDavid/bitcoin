@@ -8,12 +8,18 @@ find_package(libprotobuf-mutator REQUIRED)
 add_executable(fuzzproto
   addition_overflow.cpp
   addition_overflow.proto
+  addrman.cpp
+  addrman.proto
   connect_block.cpp
   connect_block.proto
   fuzz_proto.cpp
   util.cpp
   util.proto
+  util/net.cpp
+  util/net.proto
 )
+
+target_include_directories(fuzzproto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 protobuf_generate(
   TARGET fuzzproto

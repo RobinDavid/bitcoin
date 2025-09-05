@@ -6,3 +6,10 @@ message uint256 {
   bytes value = 1;
 }
 
+message WeakEnum {
+  oneof type {
+    uint32 InsideEnum = 1;
+    uint32 RawValueEnum = 2;
+  }
+}
+

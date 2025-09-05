@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+import "util.proto";
+import "util/net.proto";
+
+package addrman_fuzz;
+
+message Target_data_stream_addr_man {
+  bytes datastream = 1;
+  proto_fuzz_util_net.NetGroupManager netmanager = 2;
+}
+
+message Target_addrman {
+  int64 time = 1;
+  proto_fuzz_util_net.NetGroupManager netmanager = 2;
+  proto_fuzz_util_net.AddrManDeterministic addrman = 3;
+  proto_fuzz_util_net.AddrManDeterministic addrman2 = 4;
+  optional bytes serialized_datastream = 5;
+
+  message Action {
+    message EmptyAction {}
+    message AddAddressesAction {
+      repeated proto_fuzz_util_net.Address addrs = 1;
+      proto_fuzz_util_net.NetAddress source = 2;
+      uint32 timePenality = 3;
+    }
+    message GoodAction {
+      proto_fuzz_util_net.Service serviceAddr = 1;
+      uint32 time = 2;
+    }
+    message AttemptAction {
+      proto_fuzz_util_net.Service serviceAddr = 1;
+      bool count_failure = 2;
+      uint32 time = 3;
+    }
+    message ConnectedAction {
+      proto_fuzz_util_net.Service serviceAddr = 1;
+      uint32 time = 2;
+    }
+    message SetServicesAction {
+      proto_fuzz_util_net.Service serviceAddr = 1;
+      proto_fuzz_util.WeakEnum n_service = 2; 
+    }
+
+    oneof action_type {
+      EmptyAction ResolvConflict = 1;
+      EmptyAction SelectTriedCollision = 2;
+      AddAddressesAction AddAddresses = 3;
+      GoodAction GoodAddress = 4;
+      AttemptAction AttemptAddress = 5;
+      ConnectedAction ConnectedAddress = 6;
+      SetServicesAction SetServices = 7;
+    }
+  }
+
+  repeated Action actions = 6;
+  optional uint32 network = 7;
+  uint32 max_addresses = 8;
+  uint32 max_pct = 9;
+  bool filtered = 10;
+  message RepeatableBool {
+    bool value = 1;
+  }
+  repeated RepeatableBool networklist = 11;
+  bool select_new_only = 12;
+  optional bool in_new = 13;
+}
+
+message RandAddrMessage {
+  proto_fuzz_util_net.NetAddress address = 1;
+}
+
+message FillAddrManMessage {
+  uint32 fraction = 1;
+
+  message SourceLoop {
+    RandAddrMessage sourceAddr = 1;
+
+    message AddressList {
+      RandAddrMessage address = 1;
+      uint32 time_penalty = 2;
+      uint32 isAdd = 3;
+    }
+    repeated AddressList addresses = 2;
+  }
+  repeated SourceLoop sources = 2;
+}
+
+message Target_addrman_serdeser {
+  int64 time = 1;
+  proto_fuzz_util_net.NetGroupManager netmanager = 2;
+  proto_fuzz_util_net.AddrManDeterministic addrman1 = 3;
+  proto_fuzz_util_net.AddrManDeterministic addrman2 = 4;
+
+  FillAddrManMessage fillAddrManMessage = 5;
+}

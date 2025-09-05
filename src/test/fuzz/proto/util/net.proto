@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+import "util.proto";
+
+package proto_fuzz_util_net;
+
+message NetGroupManager {
+    bytes value = 1;
+}
+
+message AddrManDeterministic {
+    proto_fuzz_util.uint256 seed = 1;
+}
+
+message NetAddress {
+  uint32 type_network = 1;
+  bytes net_internal = 2;
+  bytes addr_bytes = 3;
+}
+
+message Service {
+  NetAddress netaddr = 1;
+  uint32 port = 2;
+}
+
+message Address {
+  Service cservice = 1;
+  proto_fuzz_util.WeakEnum serviceflags = 2; 
+  uint32 nodesecond = 3;
+}
