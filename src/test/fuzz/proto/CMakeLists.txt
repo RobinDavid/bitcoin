@@ -2,8 +2,12 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
+cmake_policy(PUSH)
+cmake_policy(SET CMP0144 NEW)
+
 find_package(protobuf REQUIRED)
 find_package(libprotobuf-mutator REQUIRED)
+cmake_policy(POP)
 
 add_library(fuzzprotobufmsg STATIC
   addition_overflow.proto
