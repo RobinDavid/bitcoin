@@ -5,29 +5,47 @@
 find_package(protobuf REQUIRED)
 find_package(libprotobuf-mutator REQUIRED)
 
-add_executable(fuzzproto
-  addition_overflow.cpp
+add_library(fuzzprotobufmsg STATIC
   addition_overflow.proto
-  addrman.cpp
   addrman.proto
-  connect_block.cpp
   connect_block.proto
-  fuzz_proto.cpp
-  util.cpp
   util.proto
-  util/net.cpp
   util/net.proto
 )
 
-target_include_directories(fuzzproto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
 protobuf_generate(
-  TARGET fuzzproto
+  TARGET fuzzprotobufmsg
   LANGUAGE cpp
   IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
+target_link_libraries(fuzzprotobufmsg PUBLIC
+  protobuf::libprotobuf
+)
+
+target_include_directories(fuzzprotobufmsg PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+
+set(fuzzProtoSrcList
+  addition_overflow.cpp
+  addrman.cpp
+  connect_block.cpp
+  util.cpp
+  util/net.cpp
+)
+
+# TODO aflmutatorproxy should be compile without afl or sanitizer
+add_library(aflmutatorproxy SHARED
+  afl_proto_mutator.cpp
+  ${fuzzProtoSrcList}
+)
+
+add_executable(fuzzproto
+  fuzz_proto.cpp
+  ${fuzzProtoSrcList}
+)
+
 target_link_libraries(fuzzproto
+  fuzzprotobufmsg
   core_interface
   test_util
   fuzzer_interface
@@ -45,3 +63,27 @@ target_link_libraries(fuzzproto
   libprotobuf-mutator::protobuf-mutator
   libprotobuf-mutator::protobuf-mutator-libfuzzer
 )
+
+target_link_libraries(aflmutatorproxy
+  fuzzprotobufmsg
+  core_interface
+  test_util
+  fuzzer_interface
+  bitcoin_cli
+  bitcoin_common
+  bitcoin_util
+  bitcoin_node
+  minisketch
+  leveldb
+  univalue
+  secp256k1
+  Boost::headers
+  libevent::extra
+  protobuf::libprotobuf
+  libprotobuf-mutator::protobuf-mutator
+  libprotobuf-mutator::protobuf-mutator-libfuzzer
+)
+
+if(NOT FUZZ_BINARY_LINKS_WITHOUT_MAIN_FUNCTION)
+  target_compile_definitions(fuzzproto PRIVATE PROVIDE_FUZZ_MAIN_FUNCTION)
+endif()
