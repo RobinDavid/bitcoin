@@ -1,6 +1,0 @@
-Types: deb deb-src
-URIs: http://apt.llvm.org/trixie/
-Suites: llvm-toolchain-trixie-20
-Components: main
-Enabled: yes
-Signed-By: /usr/share/keyrings/llvm-snapshot.gpg.key

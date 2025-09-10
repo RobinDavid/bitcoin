@@ -2,7 +2,7 @@
 
 set -e
 
-BASEDIR=$(cd $(dirname "$0") && pwd -P)
+BASEDIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 prepare_archive (){
     pushd "$(git rev-parse --show-toplevel)" >/dev/null

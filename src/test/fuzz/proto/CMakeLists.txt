@@ -37,12 +37,6 @@ set(fuzzProtoSrcList
   util/net.cpp
 )
 
-# TODO aflmutatorproxy should be compile without afl or sanitizer
-add_library(aflmutatorproxy SHARED
-  afl_proto_mutator.cpp
-  ${fuzzProtoSrcList}
-)
-
 add_executable(fuzzproto
   fuzz_proto.cpp
   ${fuzzProtoSrcList}
@@ -68,26 +62,34 @@ target_link_libraries(fuzzproto
   libprotobuf-mutator::protobuf-mutator-libfuzzer
 )
 
-target_link_libraries(aflmutatorproxy
-  fuzzprotobufmsg
-  core_interface
-  test_util
-  fuzzer_interface
-  bitcoin_cli
-  bitcoin_common
-  bitcoin_util
-  bitcoin_node
-  minisketch
-  leveldb
-  univalue
-  secp256k1
-  Boost::headers
-  libevent::extra
-  protobuf::libprotobuf
-  libprotobuf-mutator::protobuf-mutator
-  libprotobuf-mutator::protobuf-mutator-libfuzzer
-)
-
 if(NOT FUZZ_BINARY_LINKS_WITHOUT_MAIN_FUNCTION)
   target_compile_definitions(fuzzproto PRIVATE PROVIDE_FUZZ_MAIN_FUNCTION)
+endif()
+
+if (NOT SANITIZERS)
+  # TODO aflmutatorproxy should be compile without afl or sanitizer
+  add_library(aflmutatorproxy SHARED
+    afl_proto_mutator.cpp
+    ${fuzzProtoSrcList}
+  )
+
+  target_link_libraries(aflmutatorproxy
+    fuzzprotobufmsg
+    core_interface
+    test_util
+    fuzzer_interface
+    bitcoin_cli
+    bitcoin_common
+    bitcoin_util
+    bitcoin_node
+    minisketch
+    leveldb
+    univalue
+    secp256k1
+    Boost::headers
+    libevent::extra
+    protobuf::libprotobuf
+    libprotobuf-mutator::protobuf-mutator
+    libprotobuf-mutator::protobuf-mutator-libfuzzer
+  )
 endif()

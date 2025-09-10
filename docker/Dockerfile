@@ -11,13 +11,20 @@ RUN apt-get update && \
         binutils-dev \
         build-essential \
         ca-certificates \
+        clang-19 \
         cmake \
         curl \
+        gcc-14-plugin-dev \
         git \
         libboost-dev\
+        libclang-rt-19-dev \
         libevent-dev \
+        libfuzzer-19-dev \
         libsqlite3-dev \
         libstdc++-14-dev \
+        lld-19 \
+        llvm-19-dev \
+        llvm-19-tools \
         ninja-build \
         pkg-config \
         python3 \
@@ -27,33 +34,18 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ADD ressources/etc/apt/sources.list.d/llvm.sources /etc/apt/sources.list.d/llvm.sources
-ADD ressources/usr/share/keyrings/llvm-snapshot.gpg.key /usr/share/keyrings/llvm-snapshot.gpg.key
-
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive \
-    apt-get install -y --no-install-recommends \
-        clang-20 \
-        libclang-rt-20-dev \
-        libfuzzer-20-dev \
-        lld-20 \
-        llvm-20-dev \
-        && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 RUN adduser --disabled-password --gecos '' --home "$HOME" "$USER"
 WORKDIR $HOME
 USER $USER
 
-ENV PATH="/usr/lib/llvm-20/bin:${PATH}" \
+ENV PATH="/usr/lib/llvm-19/bin:${PATH}" \
     LOCAL_INSTALL_PREFIX="${HOME}/local_install"
 
 RUN mkdir $LOCAL_INSTALL_PREFIX
 
 RUN git clone --depth 1 https://github.com/AFLplusplus/AFLplusplus.git && \
     cd AFLplusplus && \
-    make && \
+    make source-only && \
     cd ..
 
 RUN git clone --depth 1 --branch 20250814.0 https://github.com/abseil/abseil-cpp.git && \
@@ -132,3 +124,16 @@ RUN mkdir docker/build_libfuzzer_asan && cd docker/build_libfuzzer_asan && \
     ninja && \
     cd ..
 
+RUN mkdir docker/build_afl_asan && cd docker/build_afl_asan && \
+    cmake ../.. -G Ninja \
+      -DCMAKE_C_COMPILER="${HOME}/AFLplusplus/afl-clang-lto" \
+      -DCMAKE_CXX_COMPILER="${HOME}/AFLplusplus/afl-clang-lto++" \
+      -DABSL_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DPROTOBUF_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DLIBPROTOBUF-MUTATOR_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DBUILD_FOR_FUZZING=ON -DBUILD_FUZZ_PROTO_BINARY=ON \
+      -DCMAKE_C_FLAGS="-fPIC" \
+      -DCMAKE_CXX_FLAGS="-fPIC" \
+      -DSANITIZERS="undefined,address" && \
+    ninja && \
+    cd ..
