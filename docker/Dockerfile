@@ -110,6 +110,19 @@ RUN mkdir docker/build && cd docker/build && \
     ninja && \
     cd ..
 
+RUN mkdir docker/build_cov_llvm && cd docker/build_cov_llvm && \
+    cmake ../.. -G Ninja \
+      -DCMAKE_C_COMPILER="clang" \
+      -DCMAKE_CXX_COMPILER="clang++" \
+      -DABSL_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DPROTOBUF_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DLIBPROTOBUF-MUTATOR_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DCMAKE_C_FLAGS="-fPIC -fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc" \
+      -DCMAKE_CXX_FLAGS="-fPIC -fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc" \
+      -DBUILD_FOR_FUZZING=ON -DBUILD_FUZZ_PROTO_BINARY=ON && \
+    ninja && \
+    cd ..
+
 RUN mkdir docker/build_libfuzzer_asan && cd docker/build_libfuzzer_asan && \
     cmake ../.. -G Ninja \
       -DCMAKE_C_COMPILER="clang" \
@@ -125,6 +138,21 @@ RUN mkdir docker/build_libfuzzer_asan && cd docker/build_libfuzzer_asan && \
     cd ..
 
 RUN mkdir docker/build_afl_asan && cd docker/build_afl_asan && \
+    cmake ../.. -G Ninja \
+      -DCMAKE_C_COMPILER="${HOME}/AFLplusplus/afl-clang-lto" \
+      -DCMAKE_CXX_COMPILER="${HOME}/AFLplusplus/afl-clang-lto++" \
+      -DABSL_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DPROTOBUF_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DLIBPROTOBUF-MUTATOR_ROOT="${LOCAL_INSTALL_PREFIX}" \
+      -DBUILD_FOR_FUZZING=ON -DBUILD_FUZZ_PROTO_BINARY=ON \
+      -DCMAKE_C_FLAGS="-fPIC" \
+      -DCMAKE_CXX_FLAGS="-fPIC" \
+      -DSANITIZERS="undefined,address" && \
+    ninja && \
+    cd ..
+
+RUN mkdir docker/build_afl_cmp && cd docker/build_afl_cmp && \
+    export AFL_LLVM_CMPLOG=1 && \
     cmake ../.. -G Ninja \
       -DCMAKE_C_COMPILER="${HOME}/AFLplusplus/afl-clang-lto" \
       -DCMAKE_CXX_COMPILER="${HOME}/AFLplusplus/afl-clang-lto++" \
