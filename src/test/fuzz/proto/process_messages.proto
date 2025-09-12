@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+import "util/net.proto";
+
+package process_messages_fuzz;
+
+
+message Peer {
+  proto_fuzz_util_net.Node node = 1;
+  proto_fuzz_util_net.NodeInfo nodeInfo = 2;
+}
+
+message ProcessMessage {
+  bytes random_message_type = 1;
+  uint32 time = 2;
+  bytes content = 3;
+  uint32 targetNode = 4;
+}
+
+message Target {
+  repeated Peer peers = 1;
+  repeated ProcessMessage msgs = 2;
+}

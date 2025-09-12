@@ -1,0 +1,18 @@
+
+syntax = "proto3";
+
+package utxo_total_supply_fuzz;
+
+message Target {
+  uint32 time = 1;
+  uint32 txoindex = 2;
+  uint32 duplicateCoinbaseHeight = 3;
+
+  enum Action {
+    ACTION_APPEND_LAST = 0;
+    ACTION_ADD_TX = 1;
+    ACTION_MINE = 2;
+  }
+
+  repeated Action actions = 4;
+}

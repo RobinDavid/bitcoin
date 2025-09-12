@@ -13,3 +13,23 @@ message WeakEnum {
   }
 }
 
+message CtxOut {
+  int64 amount = 1;
+  bytes scriptPubKey = 2;
+}
+
+message CtxIn {
+  uint32 nSequence = 3;
+  uint32 prevN = 4;
+  uint256 prevHash = 5;
+  bytes scriptSig = 6;
+  repeated bytes scriptWitness = 7;
+}
+
+message CTransaction {
+  uint32 version = 1;
+  uint32 nLockTime = 2;
+
+  repeated CtxIn inputs = 3;
+  repeated CtxOut outputs = 4;
+}

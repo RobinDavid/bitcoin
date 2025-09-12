@@ -5,11 +5,11 @@ import "util.proto";
 package proto_fuzz_util_net;
 
 message NetGroupManager {
-    bytes value = 1;
+  bytes value = 1;
 }
 
 message AddrManDeterministic {
-    proto_fuzz_util.uint256 seed = 1;
+  proto_fuzz_util.uint256 seed = 1;
 }
 
 message NetAddress {
@@ -25,6 +25,79 @@ message Service {
 
 message Address {
   Service cservice = 1;
-  proto_fuzz_util.WeakEnum serviceflags = 2; 
+  proto_fuzz_util.WeakEnum serviceflags = 2;
   uint32 nodesecond = 3;
+}
+
+message FuzzSockInternal {
+  uint32 acceptErrorMsg = 1;
+
+  bool m_selectable = 2;
+  uint32 socket = 3;
+
+  message SendElement {
+    optional uint32 value = 1;
+    uint32 errorValue = 2;
+  }
+  repeated SendElement sendElements = 4;
+
+  message RecvElement {
+    optional uint32 errorValue = 1;
+    bool noData = 2;
+    bool latency = 3;
+  }
+  repeated RecvElement recvElements = 5;
+
+  repeated bytes sockMessages = 6;
+
+  message SimpleElement {
+    optional uint32 errorValue = 1;
+  }
+  repeated SimpleElement setSockOptElements = 7;
+
+  message GetSockOptElement {
+    optional uint32 errorValue = 1;
+    bytes optValue = 2;
+  }
+  repeated GetSockOptElement getSockOptElements = 8;
+
+  message WaitElement {
+    optional uint32 errorValue = 1;
+    bool grantRequest = 2;
+  }
+  repeated WaitElement waitElements = 9;
+
+  optional uint32 connectError = 10;
+  optional uint32 bindError = 11;
+  optional uint32 listenError = 12;
+  optional uint32 setNonBlockingError = 13;
+  uint32 m_remain_before_disconnected = 14;
+  bytes sockName = 15;
+  optional uint32 sockNameError = 16;
+}
+
+message FuzzSockAccept {
+  FuzzSockInternal socket = 1;
+  repeated FuzzSockInternal acceptSocket = 2;
+}
+
+message Node {
+  int64 nodeId = 1;
+  FuzzSockAccept fuzz_sock = 2;
+  Address address = 3;
+  uint64 keyed_net_group = 4;
+  uint64 local_host_nonce = 5;
+  Address addr_bind = 6;
+  bytes addr_name = 7;
+  uint32 conn_type = 8;
+  bool inbound_onion = 9;
+  proto_fuzz_util.WeakEnum permission_flags = 10;
+}
+
+message NodeInfo {
+  bool successfully_connected = 1;
+  proto_fuzz_util.WeakEnum remote_services = 2;
+  proto_fuzz_util.WeakEnum local_services = 3;
+  uint32 version = 4;
+  bool relay_txs = 5;
 }

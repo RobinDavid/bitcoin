@@ -171,7 +171,7 @@ FUZZ_PROTO_TARGET(addrman,
     const AddrMan& const_addr_man{addr_man};
     std::optional<Network> network;
     if (el.has_network()) {
-        network = ALL_NETWORKS[el.network() % ALL_NETWORKS.size()];
+        network = ConsumeEnum(el.network(), ALL_NETWORKS);
     }
     auto max_addresses = ConsumeIntegralInRange<size_t>(el.max_addresses(), 0, 4096);
     auto max_pct = ConsumeIntegralInRange<size_t>(el.max_pct(), 0, 100);

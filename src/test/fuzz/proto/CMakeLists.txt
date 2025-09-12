@@ -13,8 +13,11 @@ add_library(fuzzprotobufmsg STATIC
   addition_overflow.proto
   addrman.proto
   connect_block.proto
+  process_messages.proto
+  script_flags.proto
   util.proto
   util/net.proto
+  utxo_total_supply.proto
 )
 
 protobuf_generate(
@@ -33,8 +36,11 @@ set(fuzzProtoSrcList
   addition_overflow.cpp
   addrman.cpp
   connect_block.cpp
+  process_messages.cpp
+  script_flags.cpp
   util.cpp
   util/net.cpp
+  utxo_total_supply.cpp
 )
 
 add_executable(fuzzproto

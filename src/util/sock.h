@@ -48,6 +48,8 @@ public:
      */
     virtual ~Sock();
 
+    virtual bool isMock() const { return false; }
+
     /**
      * Copy assignment operator, disabled because closing the same socket twice is undesirable.
      */
