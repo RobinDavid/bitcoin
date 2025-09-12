@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package coinscache_sim_fuzz;
+
+
+message Target {
+  message Action {
+    message EmptyAction {}
+    message AddCointAction {
+        uint32 outpointidx = 1;
+        uint32 coinidx = 2;
+    }
+
+    oneof action_type {
+       uint32 GetCoin = 1;
+       uint32 HaveCoin = 2;
+       uint32 HaveCoinInCache = 3;
+       uint32 AccessCoin = 4;
+       AddCointAction AddCoin = 5;
+       AddCointAction AddCoinAlways = 6;
+       uint32 SpendCoin = 7;
+       uint32 SpendCoinMoveto = 8;
+       uint32 Uncache = 9;
+       EmptyAction AddCacheLevel = 10;
+       EmptyAction RemoveCacheLevel = 11;
+       EmptyAction Flush = 12;
+       EmptyAction Sync = 13;
+       EmptyAction FlushReallocateCache = 14;
+       EmptyAction GetCacheSize = 15;
+       EmptyAction DynamicMemoryUsage = 16;
+       uint32 Changeheight = 17;
+    }
+  }
+  repeated Action actions = 1;
+}

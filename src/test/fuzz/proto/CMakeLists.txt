@@ -12,6 +12,7 @@ cmake_policy(POP)
 add_library(fuzzprotobufmsg STATIC
   addition_overflow.proto
   addrman.proto
+  coinscache_sim.proto
   connect_block.proto
   process_messages.proto
   script_flags.proto
@@ -35,6 +36,7 @@ target_include_directories(fuzzprotobufmsg PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 set(fuzzProtoSrcList
   addition_overflow.cpp
   addrman.cpp
+  coinscache_sim.cpp
   connect_block.cpp
   process_messages.cpp
   script_flags.cpp
