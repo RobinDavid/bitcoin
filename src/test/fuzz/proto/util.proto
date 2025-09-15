@@ -1,9 +1,9 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package proto_fuzz_util;
 
 message uint256 {
-  bytes value = 1;
+  required bytes value = 1;
 }
 
 message WeakEnum {
@@ -14,22 +14,58 @@ message WeakEnum {
 }
 
 message CtxOut {
-  int64 amount = 1;
-  bytes scriptPubKey = 2;
+  required int64 amount = 1;
+  required bytes scriptPubKey = 2;
+}
+
+message COutPoint {
+  required uint32 prevN = 1;
+  required uint256 prevHash = 2;
 }
 
 message CtxIn {
-  uint32 nSequence = 3;
-  uint32 prevN = 4;
-  uint256 prevHash = 5;
-  bytes scriptSig = 6;
-  repeated bytes scriptWitness = 7;
+  required COutPoint outPoint = 1;
+  required bytes scriptSig = 2;
+  repeated bytes scriptWitness = 3;
+  required uint32 nSequence = 4;
 }
 
 message CTransaction {
-  uint32 version = 1;
-  uint32 nLockTime = 2;
+  required uint32 version = 1;
+  required uint32 nLockTime = 2;
 
   repeated CtxIn inputs = 3;
   repeated CtxOut outputs = 4;
+}
+
+message PublicKey {
+  required bytes data = 1;
+}
+
+message CScript {
+  required bool p2wsh = 1;
+
+  message Element {
+    message MultiSigElement {
+      required uint32 numSig = 1;
+      required uint32 numKey = 2;
+      repeated PublicKey pubKeys = 3;
+    }
+
+    oneof element_type {
+      int64 PushInt64 = 1;
+      uint32 Opcode = 2;
+      int64 ScriptNum = 3;
+      bytes PushByteVector = 4;
+      bytes PushMalformatedVector = 5;
+      MultiSigElement MultiSig = 6;
+    }
+  }
+  repeated Element elements = 2;
+}
+
+message Coin {
+  required CtxOut outIn = 1;
+  required int32 nHeightIn = 2;
+  required bool fCoinBaseIn = 3;
 }

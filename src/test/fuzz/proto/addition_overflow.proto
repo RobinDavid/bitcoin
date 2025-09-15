@@ -1,24 +1,24 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package addition_overflow_fuzz;
 
 message Target {
-  sint64 s64_1 = 1;
-  sint64 s64_2 = 2;
-  uint64 u64_1 = 3;
-  uint64 u64_2 = 4;
-  sint32 s32_1 = 5;
-  sint32 s32_2 = 6;
-  uint32 u32_1 = 7;
-  uint32 u32_2 = 8;
-  sint32 s16_1 = 9;
-  sint32 s16_2 = 10;
-  uint32 u16_1 = 11;
-  uint32 u16_2 = 12;
-  int32 c8_1 = 13;
-  int32 c8_2 = 14;
-  sint32 s8_1 = 15;
-  sint32 s8_2 = 16;
-  uint32 u8_1 = 17;
-  uint32 u8_2 = 18;
+  required sint64 s64_1 = 1;
+  required sint64 s64_2 = 2;
+  required uint64 u64_1 = 3;
+  required uint64 u64_2 = 4;
+  required sint32 s32_1 = 5;
+  required sint32 s32_2 = 6;
+  required uint32 u32_1 = 7;
+  required uint32 u32_2 = 8;
+  required sint32 s16_1 = 9;
+  required sint32 s16_2 = 10;
+  required uint32 u16_1 = 11;
+  required uint32 u16_2 = 12;
+  required int32 c8_1 = 13;
+  required int32 c8_2 = 14;
+  required sint32 s8_1 = 15;
+  required sint32 s8_2 = 16;
+  required uint32 u8_1 = 17;
+  required uint32 u8_2 = 18;
 }

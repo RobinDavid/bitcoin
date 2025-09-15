@@ -438,7 +438,7 @@ bool FuzzedSock::WaitInternal(std::optional<std::chrono::milliseconds> timeout, 
         EINVAL,
     };
     if (el.has_errorvalue()) {
-        SetFuzzedErrNo(el.has_errorvalue(), wait_errnos);
+        SetFuzzedErrNo(el.errorvalue(), wait_errnos);
         return false;
     }
     if (occurred != nullptr) {

@@ -1,14 +1,13 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package coinscache_sim_fuzz;
-
 
 message Target {
   message Action {
     message EmptyAction {}
     message AddCointAction {
-        uint32 outpointidx = 1;
-        uint32 coinidx = 2;
+        required uint32 outpointidx = 1;
+        required uint32 coinidx = 2;
     }
 
     oneof action_type {

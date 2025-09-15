@@ -1,50 +1,50 @@
-syntax = "proto3";
+syntax = "proto2";
 
 import "util.proto";
 
 package proto_fuzz_util_net;
 
 message NetGroupManager {
-  bytes value = 1;
+  required bytes value = 1;
 }
 
 message AddrManDeterministic {
-  proto_fuzz_util.uint256 seed = 1;
+  required proto_fuzz_util.uint256 seed = 1;
 }
 
 message NetAddress {
-  uint32 type_network = 1;
-  bytes net_internal = 2;
-  bytes addr_bytes = 3;
+  required uint32 type_network = 1;
+  required bytes net_internal = 2;
+  required bytes addr_bytes = 3;
 }
 
 message Service {
-  NetAddress netaddr = 1;
-  uint32 port = 2;
+  required NetAddress netaddr = 1;
+  required uint32 port = 2;
 }
 
 message Address {
-  Service cservice = 1;
-  proto_fuzz_util.WeakEnum serviceflags = 2;
-  uint32 nodesecond = 3;
+  required Service cservice = 1;
+  required proto_fuzz_util.WeakEnum serviceflags = 2;
+  required uint32 nodesecond = 3;
 }
 
 message FuzzSockInternal {
-  uint32 acceptErrorMsg = 1;
+  required uint32 acceptErrorMsg = 1;
 
-  bool m_selectable = 2;
-  uint32 socket = 3;
+  required bool m_selectable = 2;
+  required uint32 socket = 3;
 
   message SendElement {
     optional uint32 value = 1;
-    uint32 errorValue = 2;
+    required uint32 errorValue = 2;
   }
   repeated SendElement sendElements = 4;
 
   message RecvElement {
     optional uint32 errorValue = 1;
-    bool noData = 2;
-    bool latency = 3;
+    required bool noData = 2;
+    required bool latency = 3;
   }
   repeated RecvElement recvElements = 5;
 
@@ -57,13 +57,13 @@ message FuzzSockInternal {
 
   message GetSockOptElement {
     optional uint32 errorValue = 1;
-    bytes optValue = 2;
+    required bytes optValue = 2;
   }
   repeated GetSockOptElement getSockOptElements = 8;
 
   message WaitElement {
     optional uint32 errorValue = 1;
-    bool grantRequest = 2;
+    required bool grantRequest = 2;
   }
   repeated WaitElement waitElements = 9;
 
@@ -71,33 +71,33 @@ message FuzzSockInternal {
   optional uint32 bindError = 11;
   optional uint32 listenError = 12;
   optional uint32 setNonBlockingError = 13;
-  uint32 m_remain_before_disconnected = 14;
-  bytes sockName = 15;
+  required uint32 m_remain_before_disconnected = 14;
+  required bytes sockName = 15;
   optional uint32 sockNameError = 16;
 }
 
 message FuzzSockAccept {
-  FuzzSockInternal socket = 1;
+  required FuzzSockInternal socket = 1;
   repeated FuzzSockInternal acceptSocket = 2;
 }
 
 message Node {
-  int64 nodeId = 1;
-  FuzzSockAccept fuzz_sock = 2;
-  Address address = 3;
-  uint64 keyed_net_group = 4;
-  uint64 local_host_nonce = 5;
-  Address addr_bind = 6;
-  bytes addr_name = 7;
-  uint32 conn_type = 8;
-  bool inbound_onion = 9;
-  proto_fuzz_util.WeakEnum permission_flags = 10;
+  required int64 nodeId = 1;
+  required FuzzSockAccept fuzz_sock = 2;
+  required Address address = 3;
+  required uint64 keyed_net_group = 4;
+  required uint64 local_host_nonce = 5;
+  required Address addr_bind = 6;
+  required bytes addr_name = 7;
+  required uint32 conn_type = 8;
+  required bool inbound_onion = 9;
+  required proto_fuzz_util.WeakEnum permission_flags = 10;
 }
 
 message NodeInfo {
-  bool successfully_connected = 1;
-  proto_fuzz_util.WeakEnum remote_services = 2;
-  proto_fuzz_util.WeakEnum local_services = 3;
-  uint32 version = 4;
-  bool relay_txs = 5;
+  required bool successfully_connected = 1;
+  required proto_fuzz_util.WeakEnum remote_services = 2;
+  required proto_fuzz_util.WeakEnum local_services = 3;
+  required uint32 version = 4;
+  required bool relay_txs = 5;
 }

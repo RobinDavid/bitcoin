@@ -1,0 +1,49 @@
+syntax = "proto2";
+
+import "util.proto";
+
+package coins_view_fuzz;
+
+message Target {
+  message EmptyAction {}
+  message Action {
+    message BatchWriteAction {
+      message LoopElement {
+        required bool dirty = 1;
+        required bool fresh = 2;
+        optional proto_fuzz_util.Coin randomCoin = 3;
+      }
+
+      repeated LoopElement elements = 1;
+      optional proto_fuzz_util.uint256 hash = 2;
+    }
+
+    oneof action_type {
+      bool AddCoin = 1;
+      EmptyAction Flush = 2;
+      EmptyAction Sync = 3;
+      proto_fuzz_util.uint256 SetBestBlock = 4;
+      bool SpendCoin = 5;
+      EmptyAction Uncache = 6;
+      bool SetBackend = 7;
+      proto_fuzz_util.COutPoint SetRandomOutPoint = 8;
+      proto_fuzz_util.Coin SetRandomCoin = 9;
+      proto_fuzz_util.CTransaction SetRandomTransaction = 10;
+      BatchWriteAction BatchWrite = 11;
+    }
+  }
+  repeated Action actions = 1;
+
+  message FinalAddCoinAction {
+    required uint32 height = 1;
+    required bool possible_overwrite = 2;
+  }
+  oneof final_action_type {
+    FinalAddCoinAction FinalAddCoin = 2;
+    EmptyAction AreInputsStandard = 3;
+    uint32 CheckTxInputs = 4;
+    EmptyAction GetP2SHSigOpCount = 5;
+    uint32 GetTransactionSigOpCost = 6;
+    EmptyAction IsWitnessStandard = 7;
+  }
+}

@@ -2,6 +2,7 @@
 #define BITCOIN_TEST_FUZZ_PROTO_UTIL_H
 
 #include <test/fuzz/proto/util.pb.h>
+#include <coins.h>
 #include <merkleblock.h>
 #include <uint256.h>
 #include <util/check.h>
@@ -124,9 +125,13 @@ inline CTxOut ConsumeCtxOut(const proto_fuzz_util::CtxOut& m) {
     return CTxOut(m.amount(), CScript(scriptPubKey.begin(), scriptPubKey.end()));
 }
 
+inline COutPoint ConsumeCOutPoint(const proto_fuzz_util::COutPoint& m) {
+    return {Txid::FromUint256(ConsumeUInt256(m.prevhash())), m.prevn()};
+}
+
 inline CTxIn ConsumeCtxIn(const proto_fuzz_util::CtxIn& m, bool allowWitness=false) {
     const auto& scriptSig = m.scriptsig();
-    CTxIn res(Txid::FromUint256(ConsumeUInt256(m.prevhash())), m.prevn(), CScript(scriptSig.begin(), scriptSig.end()), m.nsequence());
+    CTxIn res(ConsumeCOutPoint(m.outpoint()), CScript(scriptSig.begin(), scriptSig.end()), m.nsequence());
     res.scriptWitness.stack.clear();
     if (allowWitness) {
         res.scriptWitness.stack.reserve(m.scriptwitness_size());
@@ -138,7 +143,7 @@ inline CTxIn ConsumeCtxIn(const proto_fuzz_util::CtxIn& m, bool allowWitness=fal
     return res;
 }
 
-inline CTransaction ConsumeTransaction(const proto_fuzz_util::CTransaction& m, bool allowWitness=true) {
+inline CMutableTransaction ConsumeMutableTransaction(const proto_fuzz_util::CTransaction& m, bool allowWitness=true) {
     CMutableTransaction tx;
     tx.version = m.version();
     tx.nLockTime = m.nlocktime();
@@ -154,12 +159,25 @@ inline CTransaction ConsumeTransaction(const proto_fuzz_util::CTransaction& m, b
         tx.vout.push_back(ConsumeCtxOut(el));
     }
 
-    return CTransaction{tx};
+    return tx;
+}
+
+inline CTransaction ConsumeTransaction(const proto_fuzz_util::CTransaction& m, bool allowWitness=true) {
+    return CTransaction{ConsumeMutableTransaction(m, allowWitness)};
+}
+
+inline Coin ConsumeCoin(const proto_fuzz_util::Coin& m) {
+    return {ConsumeCtxOut(m.outin()), m.nheightin(), m.fcoinbasein()};
 }
 
 template <typename T, size_t size>
 void SetFuzzedErrNo(uint32_t v, const std::array<T, size>& errnos) {
     errno = ConsumeEnum(v, errnos);
 }
+
+[[nodiscard]] CScript ConsumeScript(const proto_fuzz_util::CScript& m, const bool maybe_p2wsh = false) noexcept;
+[[nodiscard]] CAmount ConsumeMoney(uint64_t v, const std::optional<CAmount>& max = std::nullopt) noexcept;
+
+[[nodiscard]] bool ContainsSpentInput(const CTransaction& tx, const CCoinsViewCache& inputs) noexcept;
 
 #endif // BITCOIN_TEST_FUZZ_PROTO_UTIL_H

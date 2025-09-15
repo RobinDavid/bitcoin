@@ -1,12 +1,11 @@
-
-syntax = "proto3";
+syntax = "proto2";
 
 package utxo_total_supply_fuzz;
 
 message Target {
-  uint32 time = 1;
-  uint32 txoindex = 2;
-  uint32 duplicateCoinbaseHeight = 3;
+  required uint32 time = 1;
+  required uint32 txoindex = 2;
+  required uint32 duplicateCoinbaseHeight = 3;
 
   enum Action {
     ACTION_APPEND_LAST = 0;
