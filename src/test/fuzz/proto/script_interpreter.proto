@@ -6,8 +6,8 @@ package script_interpreter_fuzz;
 
 message Target {
   required proto_fuzz_util.CScript script = 1;
-  required proto_fuzz_util.CTransaction tx0 = 2;
-  required proto_fuzz_util.CTransaction tx1 = 3;
+  required proto_fuzz_util.CSimpleTransaction tx0 = 2;
+  required proto_fuzz_util.CSimpleTransaction tx1 = 3;
   required uint32 targetInput = 4;
   required int32 typeHash0 = 5;
   required int32 typeHash1 = 6;

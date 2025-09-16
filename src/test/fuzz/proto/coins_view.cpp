@@ -109,7 +109,7 @@ FUZZ_PROTO_TARGET(coins_view, const coins_view_fuzz::Target& el, .init = initial
                 break;
             }
             case coins_view_fuzz::Target_Action::kSetRandomTransaction: {
-                random_mutable_transaction = ConsumeMutableTransaction(currentAction.setrandomtransaction());
+                random_mutable_transaction = ConsumeMutableSimpleTransaction(currentAction.setrandomtransaction());
                 break;
             }
             case coins_view_fuzz::Target_Action::kBatchWrite: {

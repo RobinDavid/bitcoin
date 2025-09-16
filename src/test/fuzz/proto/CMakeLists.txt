@@ -16,11 +16,14 @@ add_library(fuzzprotobufmsg STATIC
   coinscache_sim.proto
   connect_block.proto
   eval_script.proto
+  process_message.proto
   process_messages.proto
   script_flags.proto
   script_interpreter.proto
+  tx_pool.proto
   util.proto
   util/net.proto
+  util/mempool.proto
   utxo_total_supply.proto
 )
 
@@ -43,11 +46,14 @@ set(fuzzProtoSrcList
   coinscache_sim.cpp
   connect_block.cpp
   eval_script.cpp
+  process_message.cpp
   process_messages.cpp
   script_flags.cpp
   script_interpreter.cpp
+  tx_pool.cpp
   util.cpp
   util/net.cpp
+  util/mempool.cpp
   utxo_total_supply.cpp
 )
 

@@ -19,7 +19,7 @@
 
 FUZZ_PROTO_TARGET(script_flags, const script_flags_fuzz::ScriptFlags& el) {
     try {
-        const CTransaction tx = ConsumeTransaction(el.tx(), true);
+        const CTransaction tx = ConsumeSimpleTransaction(el.tx(), true);
         if ((unsigned) el.outs_size() < tx.vin.size()) return;
 
         unsigned int verify_flags = el.verify_flags();
@@ -30,7 +30,7 @@ FUZZ_PROTO_TARGET(script_flags, const script_flags_fuzz::ScriptFlags& el) {
 
         std::vector<CTxOut> spent_outputs;
         for (unsigned i = 0; i < tx.vin.size(); ++i) {
-            CTxOut prevout = ConsumeCtxOut(el.outs(i));
+            CTxOut prevout = ConsumeCSimpleTxOut(el.outs(i));
             if (!MoneyRange(prevout.nValue)) {
                 // prevouts should be consensus-valid
                 prevout.nValue = 1;

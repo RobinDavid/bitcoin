@@ -1,0 +1,71 @@
+syntax = "proto2";
+
+import "util.proto";
+
+package tx_pool_fuzz;
+
+message MempoolConstraints {
+  required uint32 limitancestorcount = 1;
+  required uint32 limitancestorsize = 2;
+  required uint32 limitdescendantcount = 3;
+  required uint32 limitdescendantsize = 4;
+  required uint32 maxmempool = 5;
+  required uint32 mempoolexpiry = 6;
+}
+
+message FinishMempool {
+  required uint32 nBlockMaxWeight = 1;
+  required uint64 blockMinFeeRate = 2;
+  required uint32 toRemoveIndex = 3;
+}
+
+message Target_tx_pool_standard {
+  message LoopElement {
+    // make Tx
+    required bool versionTruc = 1;
+    optional uint32 nLockTime = 2;
+    message TxInput {
+      required uint32 index = 1;
+      required proto_fuzz_util.Sequence sequence = 2;
+    }
+    repeated TxInput txInputs = 3;
+    required uint64 amount_fee = 4;
+    required uint32 num_out = 5;
+    // make Tx end
+    
+    optional uint64 time = 6;
+    required bool rollingFeeUpdate = 7;
+    message PrioritiseTransaction {
+      optional uint32 prioTxIndex = 1; 
+      required uint64 delta = 2;
+    }
+    optional PrioritiseTransaction prioTx = 8;
+    required bool bypass_limits = 9;
+  }
+  required uint64 time = 1;
+  required MempoolConstraints memConstraints = 2;
+  required bool mempool_require_standard = 3;
+  repeated LoopElement elements = 4;
+  required FinishMempool finish = 5;
+}
+
+message Target_tx_pool {
+  message LoopElement {
+    required proto_fuzz_util.CComplexeTransaction tx = 1;
+    optional uint64 time = 2;
+    required bool rollingFeeUpdate = 3;
+    message PrioritiseTransaction {
+      optional uint32 prioTxIndex = 1; 
+      required uint64 delta = 2;
+    }
+    optional PrioritiseTransaction prioTx = 4;
+    required bool bypass_limits = 5;
+  }
+  required uint64 time = 1;
+  repeated proto_fuzz_util.uint256 non_existent_outpoints = 2;
+  required MempoolConstraints memConstraints = 3;
+  required bool mempool_require_standard = 4;
+  repeated LoopElement elements = 5;
+  required FinishMempool finish = 6;
+}
+

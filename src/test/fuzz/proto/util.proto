@@ -13,7 +13,7 @@ message WeakEnum {
   }
 }
 
-message CtxOut {
+message CSimpleTxOut {
   required int64 amount = 1;
   required bytes scriptPubKey = 2;
 }
@@ -23,19 +23,19 @@ message COutPoint {
   required uint256 prevHash = 2;
 }
 
-message CtxIn {
+message CSimpleTxIn {
   required COutPoint outPoint = 1;
   required bytes scriptSig = 2;
   repeated bytes scriptWitness = 3;
   required uint32 nSequence = 4;
 }
 
-message CTransaction {
+message CSimpleTransaction {
   required uint32 version = 1;
   required uint32 nLockTime = 2;
 
-  repeated CtxIn inputs = 3;
-  repeated CtxOut outputs = 4;
+  repeated CSimpleTxIn inputs = 3;
+  repeated CSimpleTxOut outputs = 4;
 }
 
 message PublicKey {
@@ -65,7 +65,35 @@ message CScript {
 }
 
 message Coin {
-  required CtxOut outIn = 1;
+  required CSimpleTxOut outIn = 1;
   required int32 nHeightIn = 2;
   required bool fCoinBaseIn = 3;
+}
+
+message Sequence {
+  oneof seq_type {
+    uint32 limited = 1;
+    uint32 raw = 2;
+  }
+}
+
+message CComplexeTransaction {
+  message TxInput {
+    required uint32 indexTx = 1;
+    required uint32 indexTxOut = 2;
+    required Sequence sequence = 3;
+    message UnlockScript {
+      required CScript script = 1;
+      repeated bytes scriptWitness = 2;
+    }
+    optional UnlockScript unlockScript = 4;
+  }
+  message TxOutput {
+    required uint64 amount = 1;
+    optional CScript script = 2;
+  }
+  optional uint32 version = 1;
+  required uint32 nLockTime = 2;
+  repeated TxInput inputs = 3;
+  repeated TxOutput outputs = 4;
 }

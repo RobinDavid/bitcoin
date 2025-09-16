@@ -28,7 +28,7 @@ message Target {
       bool SetBackend = 7;
       proto_fuzz_util.COutPoint SetRandomOutPoint = 8;
       proto_fuzz_util.Coin SetRandomCoin = 9;
-      proto_fuzz_util.CTransaction SetRandomTransaction = 10;
+      proto_fuzz_util.CSimpleTransaction SetRandomTransaction = 10;
       BatchWriteAction BatchWrite = 11;
     }
   }

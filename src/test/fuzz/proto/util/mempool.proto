@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+package proto_fuzz_util_mempool;
+
+message ConsumeTxMemPoolEntry {
+  required uint64 fees = 1;
+  required int64 time = 2;
+  required uint64 entry_sequence = 3;
+  required uint32 entry_height = 4;
+  required bool spends_coinbase = 5;
+  required uint32 sig_op_cost = 6;
+}
+

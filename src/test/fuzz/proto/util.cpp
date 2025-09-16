@@ -1,5 +1,8 @@
 #include <array>
+
 #include <pubkey.h>
+#include <util/rbf.h>
+#include <test/util/script.h>
 
 #include <test/fuzz/proto/util.h>
 
@@ -111,5 +114,58 @@ bool ContainsSpentInput(const CTransaction& tx, const CCoinsViewCache& inputs) n
         }
     }
     return false;
+}
+
+uint32_t ConsumeSequence(const proto_fuzz_util::Sequence& el) noexcept
+{
+    return el.has_limited() ?
+               ConsumeEnum(el.limited(), {
+                   CTxIn::SEQUENCE_FINAL,
+                   CTxIn::MAX_SEQUENCE_NONFINAL,
+                   MAX_BIP125_RBF_SEQUENCE,
+               }) : el.raw();
+}
+
+CMutableTransaction ConsumeComplexeTransaction(const proto_fuzz_util::CComplexeTransaction& el, const std::vector<Txid>& prevout_txids, const int max_num_in, const int max_num_out) noexcept
+{
+    CMutableTransaction tx_mut;
+    // const auto p2wsh_op_true = el.p2wsh_op_true();
+    tx_mut.version = el.has_version() ?
+                          CTransaction::CURRENT_VERSION :
+                          el.version();
+    tx_mut.nLockTime = el.nlocktime();
+    for (int i = 0; i < std::min(el.inputs_size(), max_num_in); ++i) {
+        const auto& currentInput = el.inputs(i);
+        Assert(prevout_txids.size() > 0);
+        const auto& txid_prev = PickValue(currentInput.indextx(), prevout_txids);
+        const auto index_out = ConsumeIntegralInRange<uint32_t>(currentInput.indextxout(), 0, max_num_out);
+        const auto sequence = ConsumeSequence(currentInput.sequence());
+        CScript script_sig;
+        CScriptWitness script_wit;
+        if (currentInput.has_unlockscript()) {
+            script_sig = ConsumeScript(currentInput.unlockscript().script());
+            for (size_t j = 0; j < std::min<size_t>(currentInput.unlockscript().scriptwitness_size(), 32); ++j) {
+                script_wit.stack.push_back(ConsumeByteVector(currentInput.unlockscript().scriptwitness(j)));
+            }
+        } else {
+            script_wit.stack = std::vector<std::vector<uint8_t>>{WITNESS_STACK_ELEM_OP_TRUE};
+        }
+        CTxIn in;
+        in.prevout = COutPoint{txid_prev, index_out};
+        in.nSequence = sequence;
+        in.scriptSig = script_sig;
+        in.scriptWitness = script_wit;
+
+        tx_mut.vin.push_back(in);
+    }
+    for (int i = 0; i < std::min(el.outputs_size(), max_num_out); ++i) {
+        const auto& currentOutput = el.outputs(i);
+        const auto amount = ConsumeIntegralInRange<CAmount>(currentOutput.amount(), -10, 50 * COIN + 10);
+        const auto script_pk = currentOutput.has_script() ?
+                                   ConsumeScript(currentOutput.script(), /*maybe_p2wsh=*/true):
+                                   P2WSH_OP_TRUE;
+        tx_mut.vout.emplace_back(amount, script_pk);
+    }
+    return tx_mut;
 }
 

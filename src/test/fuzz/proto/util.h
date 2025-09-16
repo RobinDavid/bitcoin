@@ -120,7 +120,7 @@ WeakEnumType ConsumeWeakEnum(const proto_fuzz_util::WeakEnum& m, const std::arra
     }
 }
 
-inline CTxOut ConsumeCtxOut(const proto_fuzz_util::CtxOut& m) {
+inline CTxOut ConsumeCSimpleTxOut(const proto_fuzz_util::CSimpleTxOut& m) {
     const auto& scriptPubKey = m.scriptpubkey();
     return CTxOut(m.amount(), CScript(scriptPubKey.begin(), scriptPubKey.end()));
 }
@@ -129,7 +129,7 @@ inline COutPoint ConsumeCOutPoint(const proto_fuzz_util::COutPoint& m) {
     return {Txid::FromUint256(ConsumeUInt256(m.prevhash())), m.prevn()};
 }
 
-inline CTxIn ConsumeCtxIn(const proto_fuzz_util::CtxIn& m, bool allowWitness=false) {
+inline CTxIn ConsumeCSimpleTxIn(const proto_fuzz_util::CSimpleTxIn& m, bool allowWitness=false) {
     const auto& scriptSig = m.scriptsig();
     CTxIn res(ConsumeCOutPoint(m.outpoint()), CScript(scriptSig.begin(), scriptSig.end()), m.nsequence());
     res.scriptWitness.stack.clear();
@@ -143,7 +143,7 @@ inline CTxIn ConsumeCtxIn(const proto_fuzz_util::CtxIn& m, bool allowWitness=fal
     return res;
 }
 
-inline CMutableTransaction ConsumeMutableTransaction(const proto_fuzz_util::CTransaction& m, bool allowWitness=true) {
+inline CMutableTransaction ConsumeMutableSimpleTransaction(const proto_fuzz_util::CSimpleTransaction& m, bool allowWitness=true) {
     CMutableTransaction tx;
     tx.version = m.version();
     tx.nLockTime = m.nlocktime();
@@ -153,21 +153,21 @@ inline CMutableTransaction ConsumeMutableTransaction(const proto_fuzz_util::CTra
     tx.vin.reserve(m.inputs_size());
     tx.vout.reserve(m.outputs_size());
     for (const auto& el : m.inputs()) {
-        tx.vin.push_back(ConsumeCtxIn(el, allowWitness));
+        tx.vin.push_back(ConsumeCSimpleTxIn(el, allowWitness));
     }
     for (const auto& el : m.outputs()) {
-        tx.vout.push_back(ConsumeCtxOut(el));
+        tx.vout.push_back(ConsumeCSimpleTxOut(el));
     }
 
     return tx;
 }
 
-inline CTransaction ConsumeTransaction(const proto_fuzz_util::CTransaction& m, bool allowWitness=true) {
-    return CTransaction{ConsumeMutableTransaction(m, allowWitness)};
+inline CTransaction ConsumeSimpleTransaction(const proto_fuzz_util::CSimpleTransaction& m, bool allowWitness=true) {
+    return CTransaction{ConsumeMutableSimpleTransaction(m, allowWitness)};
 }
 
 inline Coin ConsumeCoin(const proto_fuzz_util::Coin& m) {
-    return {ConsumeCtxOut(m.outin()), m.nheightin(), m.fcoinbasein()};
+    return {ConsumeCSimpleTxOut(m.outin()), m.nheightin(), m.fcoinbasein()};
 }
 
 template <typename T, size_t size>
@@ -179,5 +179,10 @@ void SetFuzzedErrNo(uint32_t v, const std::array<T, size>& errnos) {
 [[nodiscard]] CAmount ConsumeMoney(uint64_t v, const std::optional<CAmount>& max = std::nullopt) noexcept;
 
 [[nodiscard]] bool ContainsSpentInput(const CTransaction& tx, const CCoinsViewCache& inputs) noexcept;
+
+[[nodiscard]] uint32_t ConsumeSequence(const proto_fuzz_util::Sequence& el) noexcept;
+
+[[nodiscard]] CMutableTransaction ConsumeComplexeTransaction(const proto_fuzz_util::CComplexeTransaction& m, const std::vector<Txid>& prevout_txids, const int max_num_in = 10, const int max_num_out = 10) noexcept;
+
 
 #endif // BITCOIN_TEST_FUZZ_PROTO_UTIL_H

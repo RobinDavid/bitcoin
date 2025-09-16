@@ -7,6 +7,6 @@ package script_flags_fuzz;
 message ScriptFlags {
   required uint32 verify_flags = 1;
   required uint32 fuzzed_flags = 2;
-  required proto_fuzz_util.CTransaction tx = 3;
-  repeated proto_fuzz_util.CtxOut outs = 4;
+  required proto_fuzz_util.CSimpleTransaction tx = 3;
+  repeated proto_fuzz_util.CSimpleTxOut outs = 4;
 }

@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+import "util/net.proto";
+
+package process_message_fuzz;
+
+message Target {
+  required proto_fuzz_util_net.Node node = 1;
+  required proto_fuzz_util_net.NodeInfo nodeInfo = 2;
+  required uint32 time = 3;
+
+  required bytes random_message_type = 4;
+  required bytes content = 5;
+}
