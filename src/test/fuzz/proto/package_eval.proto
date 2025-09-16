@@ -1,0 +1,81 @@
+syntax = "proto2";
+
+import "util.proto";
+
+package package_eval_fuzz;
+
+message MakeMempoolOpts {
+  required uint32 ancestor_count = 1;
+  required uint32 ancestor_size_vbytes = 2;
+  required uint32 descendant_count = 3;
+  required uint32 descendant_size_vbytes = 4;
+  required uint32 max_size_bytes = 5;
+  required uint32 expiry = 6;
+  required uint32 nBytesPerSigOp = 7;
+  required bool require_standard = 8;
+
+}
+
+message Target_ephemeral_package_eval {
+  required uint64 time = 1;
+
+  message Element {
+    message TransactionData {
+      required uint32 num_inputs = 1;
+      repeated uint32 inputOffsets = 2;
+      required uint32 num_outputs = 3;
+      required uint64 amount_fee = 4;
+      optional uint32 dust_index = 5;
+    }
+    required bool outPointFromPrev = 1;
+    required TransactionData firstOutpoint = 2;
+    repeated TransactionData nextOutpoint = 3;
+
+    message PriorityTransaction {
+      optional uint32 txIndex = 1;
+      required uint64 delta = 2;
+    }
+    optional PriorityTransaction prioritytx = 4;
+    required bool bypass_limits = 5;
+  }
+  repeated Element elements = 2;
+
+}
+
+message Target_tx_package_eval {
+  required uint64 time = 1;
+  required MakeMempoolOpts memopts = 2;
+  message Element {
+    message TransactionData {
+      message InputData {
+        required uint32 offset = 1;
+        required proto_fuzz_util.Sequence sequence = 2;
+        required bool script_wit_stack = 3;
+      }
+      required bool trucVersion = 1;
+      optional uint32 nLockTime = 2;
+      required uint32 num_inputs = 3;
+      repeated InputData inputDatas = 4;
+      required uint32 num_outputs = 5;
+      required bool dup_input = 6;
+      required bool invalid_input = 7;
+      required bool invalid_p2pk_output = 8;
+      required uint64 amount_fee = 9;
+    //  optional uint32 dust_index = 5;
+    }
+    required TransactionData firstOutpoint = 1;
+    repeated TransactionData nextOutpoint = 2;
+    optional uint64 time = 3;
+    required bool rollingFeeUpdate = 4;
+
+    message PriorityTransaction {
+      optional uint32 txIndex = 1;
+      required uint64 delta = 2;
+    }
+    optional PriorityTransaction prioritytx = 5;
+    required bool single_submit = 6;
+    optional uint64 client_maxfeerate = 7;
+  }
+  repeated Element elements = 3;
+
+}

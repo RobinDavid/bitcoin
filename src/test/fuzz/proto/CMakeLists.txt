@@ -16,6 +16,7 @@ add_library(fuzzprotobufmsg STATIC
   coinscache_sim.proto
   connect_block.proto
   eval_script.proto
+  package_eval.proto
   process_message.proto
   process_messages.proto
   script_flags.proto
@@ -46,6 +47,7 @@ set(fuzzProtoSrcList
   coinscache_sim.cpp
   connect_block.cpp
   eval_script.cpp
+  package_eval.cpp
   process_message.cpp
   process_messages.cpp
   script_flags.cpp
