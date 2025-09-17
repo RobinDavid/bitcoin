@@ -95,7 +95,13 @@ EnumType ConsumeEnum(uint32_t value, const EnumType (&all_types)[size]) noexcept
 }
 
 template <typename EnumType, size_t size>
-EnumType ConsumeEnum(uint32_t value, const std::array<EnumType, size>& all_types) noexcept
+EnumType PickValueInArray(uint32_t value, const EnumType (&all_types)[size]) noexcept
+{
+    return ConsumeEnum(value, all_types);
+}
+
+template <typename EnumType, size_t size>
+EnumType PickValueInArray(uint32_t value, const std::array<EnumType, size>& all_types) noexcept
 {
     return all_types[ConsumeIntegralInRange<uint32_t>(value, 0, size - 1)];
 }
@@ -114,7 +120,7 @@ template <typename WeakEnumType, size_t size>
 WeakEnumType ConsumeWeakEnum(const proto_fuzz_util::WeakEnum& m, const std::array<WeakEnumType, size>& all_types) noexcept
 {
     if (m.has_insideenum()) {
-        return ConsumeEnum(m.insideenum(), all_types);
+        return PickValueInArray(m.insideenum(), all_types);
     } else {
         return WeakEnumType(m.rawvalueenum());
     }
@@ -172,7 +178,7 @@ inline Coin ConsumeCoin(const proto_fuzz_util::Coin& m) {
 
 template <typename T, size_t size>
 void SetFuzzedErrNo(uint32_t v, const std::array<T, size>& errnos) {
-    errno = ConsumeEnum(v, errnos);
+    errno = PickValueInArray(v, errnos);
 }
 
 [[nodiscard]] CScript ConsumeScript(const proto_fuzz_util::CScript& m, const bool maybe_p2wsh = false) noexcept;

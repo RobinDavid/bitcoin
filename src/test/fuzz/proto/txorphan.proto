@@ -1,0 +1,43 @@
+syntax = "proto2";
+
+package txorphan_fuzz;
+
+message Target {
+  required uint64 time = 1;
+
+  message Element {
+    message InputElement {
+      required uint32 prevout = 1;
+      required uint32 sequenceIn = 2;
+    }
+    required InputElement firstElement = 1;
+    repeated InputElement nextElements = 2;
+    required uint32 num_out = 3;
+    required int64 node_id = 4;
+
+    message ElementLoop {
+      required int64 node_id = 1;
+
+      message EmptyAction {}
+      message EraseForBlockAction {
+        repeated uint32 indexToRemove = 2;
+      }
+      message LimitOrphansAction {
+        required uint64 time = 1;
+        required uint32 limit = 2;
+      }
+      oneof action_type {
+        EmptyAction GetTxToReconsider = 2;
+        EmptyAction AddTx = 3;
+        EmptyAction AddAnnouncer = 4;
+        EmptyAction EraseTx = 5;
+        EmptyAction EraseForPeer = 6;
+        EraseForBlockAction EraseForBlock = 7;
+        LimitOrphansAction LimitOrphans = 8;
+      }
+    }
+    repeated ElementLoop loopElements = 5;
+    required bool set_potential_parent = 6;
+  }
+  repeated Element elements = 2;
+}

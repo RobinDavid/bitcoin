@@ -21,7 +21,9 @@ add_library(fuzzprotobufmsg STATIC
   process_messages.proto
   script_flags.proto
   script_interpreter.proto
+  txdownloadman.proto
   tx_pool.proto
+  txorphan.proto
   util.proto
   util/net.proto
   util/mempool.proto
@@ -52,7 +54,9 @@ set(fuzzProtoSrcList
   process_messages.cpp
   script_flags.cpp
   script_interpreter.cpp
+  txdownloadman.cpp
   tx_pool.cpp
+  txorphan.cpp
   util.cpp
   util/net.cpp
   util/mempool.cpp

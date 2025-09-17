@@ -1,0 +1,106 @@
+syntax = "proto2";
+
+import "util.proto";
+
+package txdownloadman_fuzz;
+
+message COutPoint {
+  required uint32 firstCoin = 1;
+  repeated uint32 nextCoins = 2;
+}
+
+message Target_txdownloadman {
+  required int64 time = 1;
+  required uint32 max_orphan_count = 2;
+
+  message LoopElement {
+    required uint64 rand_peer = 1;
+
+    message RandomTx {
+      required COutPoint coin = 1;
+      required uint32 num_outputs = 2;
+      required bool add_witness = 3;
+    }
+    oneof tx_oneof {
+      RandomTx newRandTx = 2;
+      uint32 existingRandTx = 3;
+    }
+
+    message EmptyAction {}
+    message ConnectedPeerAction {
+      required bool preferred = 1;
+      required bool relay_permissions = 2;
+      required bool wtxid_relay = 3;
+    }
+    message MempoolRejectedTxAction {
+      required uint32 result = 1;
+      required bool first_time_failure = 2;
+    }
+    oneof action_type {
+      ConnectedPeerAction ConnectedPeer = 4;
+      EmptyAction DisconnectedPeer = 5;
+      EmptyAction ActiveTipChange = 6;
+      EmptyAction BlockConnected = 7;
+      EmptyAction BlockDisconnected = 8;
+      EmptyAction MempoolAcceptedTx = 9;
+      MempoolRejectedTxAction MempoolRejectedTx = 10;
+      bool AddTxAnnouncement = 11;
+      EmptyAction GetRequestsToSend = 12;
+      EmptyAction ReceivedTx = 13;
+      EmptyAction ReceivedNotFound = 14;
+      EmptyAction GetTxToReconsider = 15;
+    }
+
+    required uint32 time_skip = 16;
+    required bool minus_time_skip = 17;
+  }
+  repeated LoopElement elements = 3;
+
+}
+
+message Target_txdownloadman_impl {
+  required int64 time = 1;
+  required uint32 max_orphan_count = 2;
+
+  message LoopElement {
+    required uint64 rand_peer = 1;
+
+    message RandomTx {
+      required COutPoint coin = 1;
+      required uint32 num_outputs = 2;
+      required bool add_witness = 3;
+    }
+    oneof tx_oneof {
+      RandomTx newRandTx = 2;
+      uint32 existingRandTx = 3;
+    }
+    message EmptyAction {}
+    message ConnectedPeerAction {
+      required bool preferred = 1;
+      required bool wtxid_relay = 2;
+    }
+    message MempoolRejectedTxAction {
+      required uint32 result = 1;
+      required bool first_time_failure = 2;
+    }
+    oneof action_type {
+      ConnectedPeerAction ConnectedPeer = 4;
+      EmptyAction DisconnectedPeer = 5;
+      EmptyAction ActiveTipChange = 6;
+      EmptyAction BlockConnected = 7;
+      EmptyAction BlockDisconnected = 8;
+      EmptyAction MempoolAcceptedTx = 9;
+      MempoolRejectedTxAction MempoolRejectedTx = 10;
+      bool AddTxAnnouncement = 11;
+      EmptyAction GetRequestsToSend = 12;
+      EmptyAction ReceivedTx = 13;
+      EmptyAction ReceivedNotFound = 14;
+      bool GetTxToReconsider = 15;
+    }
+
+    required uint32 time_skip = 16;
+    required bool minus_time_skip = 17;
+  }
+  repeated LoopElement elements = 3;
+
+}
