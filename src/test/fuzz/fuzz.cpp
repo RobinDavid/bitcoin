@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <test/fuzz/fuzz.h>
+#include <test/fuzz/util.h>
 
 #include <netaddress.h>
 #include <netbase.h>
@@ -228,6 +229,7 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv)
 int main(int argc, char** argv)
 {
     initialize();
+    OpenDataTraceStream();
 #ifdef __AFL_LOOP
     // Enable AFL persistent mode. Requires compilation using afl-clang-fast++.
     // See fuzzing.md for details.
@@ -243,6 +245,7 @@ int main(int argc, char** argv)
             return 0;
         }
         test_one_input(buffer);
+        CloseDataTraceStream();
         return 0;
     }
     std::signal(SIGABRT, signal_handler);
@@ -272,6 +275,7 @@ int main(int argc, char** argv)
             buffer.clear();
         }
     }
+    CloseDataTraceStream();
     const auto end_time{Now<SteadySeconds>()};
     std::cout << g_fuzz_target << ": succeeded against " << tested << " files in " << count_seconds(end_time - start_time) << "s." << std::endl;
 #endif
