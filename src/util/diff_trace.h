@@ -53,7 +53,9 @@ bool WriteToDataStream(const T& obj) noexcept
 template <typename T, typename... Args>
 bool WriteToDataStream(const T& obj, Args... args) noexcept
 {
-  return WriteToDataStream(obj) && WriteToDataStream(std::forward<Args>(args)...);
+  bool res = WriteToDataStream(obj);
+  res &= WriteToDataStream(std::forward<Args>(args)...);
+  return res;
 }
 
 /**
