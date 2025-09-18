@@ -10,6 +10,8 @@
 #include <span>
 #include <string_view>
 
+#include "util/diff_trace.h"
+
 /**
  * Can be used to limit a theoretically unbounded loop. This caps the runtime
  * to avoid timeouts or OOMs.

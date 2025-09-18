@@ -229,7 +229,6 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv)
 int main(int argc, char** argv)
 {
     initialize();
-    OpenDataTraceStream();
 #ifdef __AFL_LOOP
     // Enable AFL persistent mode. Requires compilation using afl-clang-fast++.
     // See fuzzing.md for details.
@@ -240,6 +239,7 @@ int main(int argc, char** argv)
     }
 #else
     std::vector<uint8_t> buffer;
+    OpenDataTraceStream();
     if (argc <= 1) {
         if (!read_stdin(buffer)) {
             return 0;

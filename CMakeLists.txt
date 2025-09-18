@@ -171,6 +171,7 @@ endif()
 option(BUILD_BENCH "Build bench_bitcoin executable." OFF)
 option(BUILD_FUZZ_BINARY "Build fuzz binary." OFF)
 option(BUILD_FOR_FUZZING "Build for fuzzing. Enabling this will disable all other targets and override BUILD_FUZZ_BINARY." OFF)
+option(BUILD_FOR_DIFF_FUZZING "Build for differential fuzzing. Enabling writing tracepoint to the file defined by FUZZ_DATA_TRACE_FILE evironnment macro." OFF)
 
 option(INSTALL_MAN "Install man pages." ON)
 
@@ -220,6 +221,9 @@ if(BUILD_FOR_FUZZING)
   target_compile_definitions(core_interface INTERFACE
     FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
   )
+endif()
+if(BUILD_FOR_DIFF_FUZZING)
+  target_compile_definitions(core_interface INTERFACE ENABLE_DIFF_TRACING)
 endif()
 
 include(TryAppendCXXFlags)

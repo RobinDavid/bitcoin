@@ -42,6 +42,18 @@
         }                                                                       \
     } while(0)
 
+#elif defined(ENABLE_DIFF_TRACING)
+
+#include "util/diff_trace.h"
+
+#define TRACEPOINT_SEMAPHORE(context, event)
+#define TRACEPOINT_ACTIVE(context, event) false
+#define TRACEPOINT(context, event, ...)                                         \
+    do {                                                                        \
+        SERIALIZE_TO_DATATRACE( #context , #event __VA_OPT__(, ) __VA_ARGS__);  \
+    } while(0)
+
+
 #else
 
 #define TRACEPOINT_SEMAPHORE(context, event)
