@@ -446,10 +446,10 @@ public:
                 reinitEnv();
             }
             Assert(g_setup->m_node.chainman->ActiveTip()->GetBlockHash() == tipHash);
-        } else if (NumLoop % ResetEnvCount == 0) {
-            DEBUGOUTPUT(std::cout << "Reset by count" << std::endl);
-            reinitEnv();
-            NumLoop++;
+        //} else if (NumLoop % ResetEnvCount == 0) {
+        //    DEBUGOUTPUT(std::cout << "Reset by count" << std::endl);
+        //    reinitEnv();
+        //    NumLoop++;
         } else if (g_setup->m_node.chainman->ActiveTip()->GetBlockHash() != tipHash) {
             DEBUGOUTPUT(std::cout << "Reset by wrong tip" << std::endl);
             reinitEnv();
@@ -461,12 +461,6 @@ public:
     ~Cleanup() {
 #ifndef FUZZING_WITHOUT_PERSISTENT
         // cleanup mempool
-        CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
-        Assert(mempool);
-        while (mempool->size() > 0) {
-            const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
-            mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
-        }
         Assert(!g_setup->m_interrupt);
 
         if (!forceClean || !durtyEnv) {
@@ -482,6 +476,15 @@ public:
         } else {
             reinitEnv();
         }
+
+        CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
+        Assert(mempool);
+        while (mempool->size() > 0) {
+            const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
+            mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
+        }
+
+        Assert(!g_setup->m_interrupt);
 #endif
     }
 };
@@ -493,21 +496,57 @@ static CBlockIndex* writeBlock(const CBlock& block) EXCLUSIVE_LOCKS_REQUIRED(::c
     // Don't at it a second time.
     if (blockIndex == nullptr) {
         BlockValidationState state;
-        //CBlockIndex* bestBlock = nullptr;
-        //blockIndex = csm.m_blockman.AddToBlockIndex(block, bestBlock);
-        //Assert(bestBlock == blockIndex);
 
-        //FlatFilePos pos = csm.m_blockman.WriteBlock(block, blockIndex->nHeight);
-        //Assert(!pos.IsNull());
-        //csm.ReceivedBlockTransactions(block, blockIndex, pos);
-        //csm.ActiveChainstate().ForceFlushStateToDisk();
+        CBlockIndex* bestBlock = nullptr;
+        blockIndex = csm.m_blockman.AddToBlockIndex(block, bestBlock);
+        Assert(bestBlock == blockIndex);
+
+        FlatFilePos pos = csm.m_blockman.WriteBlock(block, blockIndex->nHeight);
+        Assert(!pos.IsNull());
+        csm.ReceivedBlockTransactions(block, blockIndex, pos);
+        csm.ActiveChainstate().ForceFlushStateToDisk();
+
+        durtyEnv = true;
+    }
+    Assert(blockIndex != nullptr);
+    BlockValidationState state;
+    const auto& consensus = g_setup->m_node.chainman->GetConsensus();
+    if (!ContextualCheckBlockHeader(block, state, csm.m_blockman, csm, blockIndex->pprev) ||
+        !CheckBlock(block, state, consensus) ||
+        !ContextualCheckBlock(block, state, csm, blockIndex->pprev)) {
+
+        DEBUGOUTPUT(std::cout << "Reject existing block as already invalid block: " << state.GetRejectReason() << std::endl);
+        return nullptr;
+    }
+    return blockIndex;
+}
+
+static CBlockIndex* writeAndActivateBlock(const CBlock& block) EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
+    ChainstateManager& csm = *g_setup->m_node.chainman;
+    CBlockIndex* blockIndex = csm.m_blockman.LookupBlockIndex(block.GetHash());
+    // if the hash already exists, this means that we got the same block before.
+    // Don't at it a second time.
+    if (blockIndex == nullptr) {
+        BlockValidationState state;
+
         bool isNewBlock = false;
         if (!csm.AcceptBlock(std::make_shared<CBlock>(block), state, &blockIndex, true, nullptr, &isNewBlock, true)) {
-            DEBUGOUTPUT(std::cout << "Fail to writeBlock : State: " << state.ToString() << std::endl);
+            DEBUGOUTPUT(std::cout << "Fail to writeAndActivateBlock : State: " << state.ToString() << std::endl);
             return nullptr;
         }
         durtyEnv = true;
+    } else {
+        BlockValidationState state;
+        const auto& consensus = g_setup->m_node.chainman->GetConsensus();
+        if (!ContextualCheckBlockHeader(block, state, csm.m_blockman, csm, blockIndex->pprev) ||
+            !CheckBlock(block, state, consensus) ||
+            !ContextualCheckBlock(block, state, csm, blockIndex->pprev)) {
+
+            DEBUGOUTPUT(std::cout << "Reject existing block as already invalid block: " << state.GetRejectReason() << std::endl);
+            return nullptr;
+        }
     }
+    Assert(blockIndex != nullptr);
     return blockIndex;
 }
 
@@ -813,7 +852,7 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
 
     for (const auto& block: branch1) {
         LOCK(::cs_main);
-        CBlockIndex* blockIndex = writeBlock(*block);
+        CBlockIndex* blockIndex = writeAndActivateBlock(*block);
         if (!blockIndex) return;
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
@@ -841,7 +880,7 @@ FUZZ_TARGET(activate_best_chain, .init = initialize_connect_block) {
 
     for (const auto& block: branch2) {
         LOCK(::cs_main);
-        CBlockIndex* blockIndex = writeBlock(*block);
+        CBlockIndex* blockIndex = writeAndActivateBlock(*block);
         if (!blockIndex) return;
         // if no pprev, we may trigger an assert in ChainstateManager::CheckBlockIndex()
         if (blockIndex->pprev != prevIndex) {
