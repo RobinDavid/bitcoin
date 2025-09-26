@@ -408,7 +408,17 @@ CBlock ConsumeBlock(FuzzedDataProvider& fuzzed_data_provider, const CBlock& prev
 [[maybe_unused]] static constexpr unsigned ResetEnvCount = 50000;
 static bool durtyEnv = false;
 
+void clearMemPool() {
+    CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
+    Assert(mempool);
+    while (mempool->size() > 0) {
+        const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
+        mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
+    }
+}
+
 [[maybe_unused]] void reinitEnv() {
+    clearMemPool();
     g_setup->m_node.chainman.reset();
     Assert(fsbridge::clearMemFS());
     g_setup->m_make_chainman();
@@ -462,6 +472,7 @@ public:
 #ifndef FUZZING_WITHOUT_PERSISTENT
         // cleanup mempool
         Assert(!g_setup->m_interrupt);
+        clearMemPool();
 
         if (!forceClean || !durtyEnv) {
             Chainstate& active_chainstate = g_setup->m_node.chainman->ActiveChainstate();
@@ -475,13 +486,6 @@ public:
             }
         } else {
             reinitEnv();
-        }
-
-        CTxMemPool* mempool = g_setup->m_node.chainman->ActiveChainstate().GetMempool();
-        Assert(mempool);
-        while (mempool->size() > 0) {
-            const CTxMemPoolEntry& entry = *(mempool->mapTx.begin());
-            mempool->removeRecursive(entry.GetTx(), MemPoolRemovalReason::EXPIRY);
         }
 
         Assert(!g_setup->m_interrupt);
